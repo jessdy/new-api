@@ -127,7 +127,7 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		},
 		ResourceAgentPayment: {
 			ActionRead:  true,
-			ActionWrite: false,
+			ActionWrite: true,
 		},
 		ResourceAgentSettlement: {
 			ActionRead: true,
@@ -178,7 +178,7 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		},
 		ResourceAgentPayment: {
 			ActionRead:  true,
-			ActionWrite: false,
+			ActionWrite: true,
 		},
 		ResourceAgentSettlement: {
 			ActionRead: true,

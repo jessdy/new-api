@@ -17,17 +17,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import z from 'zod'
 
 import { AgentConsole } from '@/features/agent'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
+const agentSearchSchema = z.object({
+  // URL query values arrive as strings; coerce so ?agent_id=1 is kept.
+  agent_id: z.preprocess((value) => {
+    if (value == null || value === '') return undefined
+    const n = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(n) && n > 0 ? n : undefined
+  }, z.number().int().positive().optional()),
+})
+
 export const Route = createFileRoute('/_authenticated/agent/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.USER) {
+    // Agents (role=5) use their own console; admins/root may manage via ?agent_id=
+    if (!auth.user) {
+      throw redirect({ to: '/403' })
+    }
+    const role = auth.user.role
+    const isAgent = role === ROLE.AGENT
+    const isAdmin = role >= ROLE.ADMIN
+    if (!isAgent && !isAdmin) {
       throw redirect({ to: '/403' })
     }
   },
+  validateSearch: agentSearchSchema,
   component: AgentConsole,
 })

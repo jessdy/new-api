@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -98,6 +99,15 @@ export function AgentsAdmin() {
                 {agent.credit_limit}
               </div>
               <div className='flex flex-wrap gap-2'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  render={
+                    <Link to='/agent' search={{ agent_id: agent.id }} />
+                  }
+                >
+                  {t('Manage console')}
+                </Button>
                 <Button
                   variant='outline'
                   size='sm'

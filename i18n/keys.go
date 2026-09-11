@@ -38,6 +38,8 @@ const (
 	MsgAuthUserIdMismatch        = "auth.user_id_mismatch"
 	MsgAuthUserBanned            = "auth.user_banned"
 	MsgAuthInsufficientPrivilege = "auth.insufficient_privilege"
+	MsgAgentAdminAgentIdRequired = "agent.admin_agent_id_required"
+	MsgAgentProfileRequired      = "agent.profile_required"
 )
 
 // Token related messages

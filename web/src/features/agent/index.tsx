@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -28,6 +29,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { handleServerError } from '@/lib/handle-server-error'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getAgentPaymentConfig,
@@ -43,18 +46,42 @@ import {
   upsertAgentModelPrice,
 } from './api'
 
+const agentRouteApi = getRouteApi('/_authenticated/agent/')
+
 export function AgentConsole() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const search = agentRouteApi.useSearch()
+  const agentId = search.agent_id
+  const user = useAuthStore((s) => s.auth.user)
+  const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const selfQuery = useQuery({
-    queryKey: ['agent', 'self'],
-    queryFn: getAgentSelf,
+    queryKey: ['agent', 'self', agentId],
+    queryFn: () => getAgentSelf(agentId),
+    retry: false,
   })
+
+  // Admins without ?agent_id= only proceed if they themselves have an agent profile.
+  const showAdminGuide =
+    isAdmin && !agentId && selfQuery.isFetched && !selfQuery.data
+  const showConsole = !isAdmin || Boolean(agentId) || Boolean(selfQuery.data)
 
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Agent Console')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
+        {showAdminGuide ? (
+          <div className='space-y-3 rounded-md border p-4 text-sm'>
+            <p>
+              {t(
+                'Administrators manage reseller settings from the Agents page. Open Manage console on a specific agent, or pass ?agent_id=.'
+              )}
+            </p>
+            <Button render={<Link to='/agents' />}>{t('Go to Agents')}</Button>
+          </div>
+        ) : null}
+        {showConsole ? (
+          <>
         <div className='text-muted-foreground mb-4 text-sm'>
           {selfQuery.data
             ? t('Invite code: {{code}} · Debt: {{debt}} / Credit: {{credit}}', {
@@ -62,7 +89,9 @@ export function AgentConsole() {
                 debt: selfQuery.data.settlement_debt,
                 credit: selfQuery.data.credit_limit,
               })
-            : t('Manage channels, pricing, users, and payment for your reseller account.')}
+            : t(
+                'Manage channels, pricing, users, and payment for your reseller account.'
+              )}
         </div>
         <Tabs defaultValue='channels'>
           <TabsList>
@@ -74,32 +103,40 @@ export function AgentConsole() {
           </TabsList>
           <TabsContent value='channels' className='mt-4'>
             <AgentChannelsPanel
-              onSaved={() => queryClient.invalidateQueries({ queryKey: ['agent'] })}
+              agentId={agentId}
+              onSaved={() =>
+                queryClient.invalidateQueries({ queryKey: ['agent'] })
+              }
             />
           </TabsContent>
           <TabsContent value='pricing' className='mt-4'>
-            <AgentPricingPanel />
+            <AgentPricingPanel agentId={agentId} />
           </TabsContent>
           <TabsContent value='users' className='mt-4'>
-            <AgentUsersPanel />
+            <AgentUsersPanel agentId={agentId} />
           </TabsContent>
           <TabsContent value='payment' className='mt-4'>
-            <AgentPaymentPanel />
+            <AgentPaymentPanel agentId={agentId} />
           </TabsContent>
           <TabsContent value='settlement' className='mt-4'>
-            <AgentSettlementPanel />
+            <AgentSettlementPanel agentId={agentId} />
           </TabsContent>
         </Tabs>
+          </>
+        ) : null}
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
 }
 
-function AgentChannelsPanel(props: { onSaved: () => void }) {
+function AgentChannelsPanel(props: {
+  agentId?: number
+  onSaved: () => void
+}) {
   const { t } = useTranslation()
   const channelsQuery = useQuery({
-    queryKey: ['agent', 'channels'],
-    queryFn: listAgentChannels,
+    queryKey: ['agent', 'channels', props.agentId],
+    queryFn: () => listAgentChannels(props.agentId),
   })
   const [selected, setSelected] = useState<number[] | null>(null)
   const current =
@@ -109,7 +146,7 @@ function AgentChannelsPanel(props: { onSaved: () => void }) {
       .map((item) => item.id)
 
   const saveMutation = useMutation({
-    mutationFn: () => replaceAgentChannels(current),
+    mutationFn: () => replaceAgentChannels(current, props.agentId),
     onSuccess: () => {
       toast.success(t('Channels saved'))
       props.onSaved()
@@ -161,15 +198,15 @@ function AgentChannelsPanel(props: { onSaved: () => void }) {
   )
 }
 
-function AgentPricingPanel() {
+function AgentPricingPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
   const groupsQuery = useQuery({
-    queryKey: ['agent', 'groups'],
-    queryFn: listAgentGroups,
+    queryKey: ['agent', 'groups', props.agentId],
+    queryFn: () => listAgentGroups(props.agentId),
   })
   const pricesQuery = useQuery({
-    queryKey: ['agent', 'model-prices'],
-    queryFn: listAgentModelPrices,
+    queryKey: ['agent', 'model-prices', props.agentId],
+    queryFn: () => listAgentModelPrices(props.agentId),
   })
   const [groupName, setGroupName] = useState('default')
   const [groupRatio, setGroupRatio] = useState('1')
@@ -178,13 +215,16 @@ function AgentPricingPanel() {
 
   const saveGroup = useMutation({
     mutationFn: () =>
-      upsertAgentGroup({
-        name: groupName,
-        ratio: Number(groupRatio),
-        topup_ratio: 1,
-        enabled: true,
-        is_default: groupName === 'default',
-      }),
+      upsertAgentGroup(
+        {
+          name: groupName,
+          ratio: Number(groupRatio),
+          topup_ratio: 1,
+          enabled: true,
+          is_default: groupName === 'default',
+        },
+        props.agentId
+      ),
     onSuccess: () => {
       toast.success(t('Group saved'))
       void groupsQuery.refetch()
@@ -194,10 +234,13 @@ function AgentPricingPanel() {
 
   const savePrice = useMutation({
     mutationFn: () =>
-      upsertAgentModelPrice({
-        model: modelName,
-        discount_ratio: Number(discount),
-      }),
+      upsertAgentModelPrice(
+        {
+          model: modelName,
+          discount_ratio: Number(discount),
+        },
+        props.agentId
+      ),
     onSuccess: () => {
       toast.success(t('Model discount saved'))
       void pricesQuery.refetch()
@@ -211,9 +254,15 @@ function AgentPricingPanel() {
         <h3 className='font-medium'>{t('Group pricing')}</h3>
         <div className='grid gap-2'>
           <Label>{t('Group name')}</Label>
-          <Input value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+          <Input
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+          />
           <Label>{t('Ratio')}</Label>
-          <Input value={groupRatio} onChange={(e) => setGroupRatio(e.target.value)} />
+          <Input
+            value={groupRatio}
+            onChange={(e) => setGroupRatio(e.target.value)}
+          />
           <Button onClick={() => saveGroup.mutate()}>{t('Save group')}</Button>
         </div>
         <ul className='text-muted-foreground space-y-1 text-sm'>
@@ -228,10 +277,18 @@ function AgentPricingPanel() {
         <h3 className='font-medium'>{t('Model discount')}</h3>
         <div className='grid gap-2'>
           <Label>{t('Model')}</Label>
-          <Input value={modelName} onChange={(e) => setModelName(e.target.value)} />
+          <Input
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+          />
           <Label>{t('Discount ratio')}</Label>
-          <Input value={discount} onChange={(e) => setDiscount(e.target.value)} />
-          <Button onClick={() => savePrice.mutate()}>{t('Save discount')}</Button>
+          <Input
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+          />
+          <Button onClick={() => savePrice.mutate()}>
+            {t('Save discount')}
+          </Button>
         </div>
         <ul className='text-muted-foreground space-y-1 text-sm'>
           {(pricesQuery.data ?? []).map((price) => (
@@ -245,11 +302,11 @@ function AgentPricingPanel() {
   )
 }
 
-function AgentUsersPanel() {
+function AgentUsersPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
   const usersQuery = useQuery({
-    queryKey: ['agent', 'users'],
-    queryFn: () => listAgentUsers(1, 50),
+    queryKey: ['agent', 'users', props.agentId],
+    queryFn: () => listAgentUsers(1, 50, props.agentId),
   })
   return (
     <div className='space-y-2'>
@@ -266,11 +323,11 @@ function AgentUsersPanel() {
   )
 }
 
-function AgentPaymentPanel() {
+function AgentPaymentPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
   const paymentQuery = useQuery({
-    queryKey: ['agent', 'payment'],
-    queryFn: getAgentPaymentConfig,
+    queryKey: ['agent', 'payment', props.agentId],
+    queryFn: () => getAgentPaymentConfig(props.agentId),
   })
   const [payAddress, setPayAddress] = useState('')
   const [epayId, setEpayId] = useState('')
@@ -281,19 +338,25 @@ function AgentPaymentPanel() {
 
   const saveMutation = useMutation({
     mutationFn: () =>
-      updateAgentPaymentConfig({
-        epay_enabled: true,
-        pay_address: payAddress || paymentQuery.data?.pay_address,
-        epay_id: epayId || undefined,
-        epay_key: epayKey || undefined,
-        pay_methods: paymentQuery.data?.pay_methods?.length
-          ? paymentQuery.data.pay_methods
-          : [{ name: 'Alipay', type: 'alipay', color: '#1677FF' }],
-        stripe_enabled: Boolean(stripeSecret || paymentQuery.data?.stripe_api_secret_set),
-        stripe_api_secret: stripeSecret || undefined,
-        stripe_webhook_secret: stripeWebhook || undefined,
-        stripe_price_id: stripePriceId || paymentQuery.data?.stripe_price_id,
-      }),
+      updateAgentPaymentConfig(
+        {
+          epay_enabled: true,
+          pay_address: payAddress || paymentQuery.data?.pay_address,
+          epay_id: epayId || undefined,
+          epay_key: epayKey || undefined,
+          pay_methods: paymentQuery.data?.pay_methods?.length
+            ? paymentQuery.data.pay_methods
+            : [{ name: 'Alipay', type: 'alipay', color: '#1677FF' }],
+          stripe_enabled: Boolean(
+            stripeSecret || paymentQuery.data?.stripe_api_secret_set
+          ),
+          stripe_api_secret: stripeSecret || undefined,
+          stripe_webhook_secret: stripeWebhook || undefined,
+          stripe_price_id:
+            stripePriceId || paymentQuery.data?.stripe_price_id,
+        },
+        props.agentId
+      ),
     onSuccess: () => {
       toast.success(t('Payment settings saved'))
       void paymentQuery.refetch()
@@ -339,16 +402,18 @@ function AgentPaymentPanel() {
         value={stripePriceId}
         onChange={(e) => setStripePriceId(e.target.value)}
       />
-      <Button onClick={() => saveMutation.mutate()}>{t('Save payment settings')}</Button>
+      <Button onClick={() => saveMutation.mutate()}>
+        {t('Save payment settings')}
+      </Button>
     </div>
   )
 }
 
-function AgentSettlementPanel() {
+function AgentSettlementPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
   const settlementQuery = useQuery({
-    queryKey: ['agent', 'settlement'],
-    queryFn: listAgentSettlement,
+    queryKey: ['agent', 'settlement', props.agentId],
+    queryFn: () => listAgentSettlement(props.agentId),
   })
   return (
     <div className='space-y-3'>

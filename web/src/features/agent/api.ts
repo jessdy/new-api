@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
+function agentParams(agentId?: number) {
+  return agentId && agentId > 0 ? { agent_id: agentId } : undefined
+}
+
 export type AgentSummary = {
   id: number
   user_id: number
@@ -84,50 +88,77 @@ export type AgentPaymentConfigView = {
   stripe_min_topup: number
 }
 
-export async function getAgentSelf(): Promise<AgentSummary> {
-  const res = await api.get('/api/agent/self')
+export async function getAgentSelf(agentId?: number): Promise<AgentSummary> {
+  const res = await api.get('/api/agent/self', { params: agentParams(agentId) })
   requireServerSuccess(res.data, 'Failed to load agent profile')
   return res.data.data
 }
 
-export async function listAgentChannels(): Promise<AgentChannelItem[]> {
-  const res = await api.get('/api/agent/channels')
+export async function listAgentChannels(
+  agentId?: number
+): Promise<AgentChannelItem[]> {
+  const res = await api.get('/api/agent/channels', {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to load channels')
   return res.data.data ?? []
 }
 
-export async function replaceAgentChannels(channelIds: number[]): Promise<void> {
-  const res = await api.put('/api/agent/channels', { channel_ids: channelIds })
+export async function replaceAgentChannels(
+  channelIds: number[],
+  agentId?: number
+): Promise<void> {
+  const res = await api.put(
+    '/api/agent/channels',
+    { channel_ids: channelIds },
+    { params: agentParams(agentId) }
+  )
   requireServerSuccess(res.data, 'Failed to save channels')
 }
 
-export async function listAgentGroups(): Promise<AgentGroup[]> {
-  const res = await api.get('/api/agent/groups')
+export async function listAgentGroups(agentId?: number): Promise<AgentGroup[]> {
+  const res = await api.get('/api/agent/groups', { params: agentParams(agentId) })
   requireServerSuccess(res.data, 'Failed to load groups')
   return res.data.data ?? []
 }
 
-export async function upsertAgentGroup(group: AgentGroup): Promise<void> {
-  const res = await api.put('/api/agent/groups', group)
+export async function upsertAgentGroup(
+  group: AgentGroup,
+  agentId?: number
+): Promise<void> {
+  const res = await api.put('/api/agent/groups', group, {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to save group')
 }
 
-export async function listAgentModelPrices(): Promise<AgentModelPrice[]> {
-  const res = await api.get('/api/agent/model-prices')
+export async function listAgentModelPrices(
+  agentId?: number
+): Promise<AgentModelPrice[]> {
+  const res = await api.get('/api/agent/model-prices', {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to load model prices')
   return res.data.data ?? []
 }
 
 export async function upsertAgentModelPrice(
-  price: AgentModelPrice
+  price: AgentModelPrice,
+  agentId?: number
 ): Promise<void> {
-  const res = await api.put('/api/agent/model-prices', price)
+  const res = await api.put('/api/agent/model-prices', price, {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to save model price')
 }
 
-export async function listAgentUsers(page = 1, pageSize = 20) {
+export async function listAgentUsers(
+  page = 1,
+  pageSize = 20,
+  agentId?: number
+) {
   const res = await api.get('/api/agent/users', {
-    params: { p: page, page_size: pageSize },
+    params: { p: page, page_size: pageSize, ...agentParams(agentId) },
   })
   requireServerSuccess(res.data, 'Failed to load agent users')
   return res.data.data as {
@@ -138,22 +169,31 @@ export async function listAgentUsers(page = 1, pageSize = 20) {
   }
 }
 
-export async function getAgentPaymentConfig(): Promise<AgentPaymentConfigView> {
-  const res = await api.get('/api/agent/payment')
+export async function getAgentPaymentConfig(
+  agentId?: number
+): Promise<AgentPaymentConfigView> {
+  const res = await api.get('/api/agent/payment', {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to load payment config')
   return res.data.data
 }
 
 export async function updateAgentPaymentConfig(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  agentId?: number
 ): Promise<AgentPaymentConfigView> {
-  const res = await api.put('/api/agent/payment', payload)
+  const res = await api.put('/api/agent/payment', payload, {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to save payment config')
   return res.data.data
 }
 
-export async function listAgentSettlement() {
-  const res = await api.get('/api/agent/settlement')
+export async function listAgentSettlement(agentId?: number) {
+  const res = await api.get('/api/agent/settlement', {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data, 'Failed to load settlement')
   return res.data.data as {
     items: Array<Record<string, unknown>>

@@ -33,6 +33,8 @@ auth.user_id_format_error: "無權進行此操作，New-Api-User 格式錯誤"
 auth.user_id_mismatch: "無權進行此操作，New-Api-User 與登入使用者不匹配"
 auth.user_banned: "使用者已被封禁"
 auth.insufficient_privilege: "無權進行此操作，權限不足"
+agent.admin_agent_id_required: "管理員請透過代理商管理頁開啟控制台（需帶 agent_id），或先為目前帳號建立代理商檔案"
+agent.profile_required: "目前帳號尚未開通代理商檔案，請聯絡管理員"
 
 # Token messages
 token.name_too_long: "令牌名稱過長"

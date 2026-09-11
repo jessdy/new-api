@@ -89,7 +89,7 @@ func init() {
 				Action:         ActionWrite,
 				LabelKey:       "Edit agent payment settings",
 				DescriptionKey: "Configure the agent's own payment gateway credentials.",
-				DefaultRoles:   []string{BuiltInRoleAgent},
+				DefaultRoles:   []string{BuiltInRoleAgent, BuiltInRoleAdmin},
 			},
 		},
 	})

@@ -132,6 +132,7 @@ export function useSidebarData(): SidebarData {
             url: '/agent',
             icon: BriefcaseBusiness,
             requiredRole: ROLE.AGENT,
+            requiredRoleExact: true,
           },
         ],
       },

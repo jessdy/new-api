@@ -32,6 +32,8 @@ auth.user_id_format_error: "Unauthorized, New-Api-User header format error"
 auth.user_id_mismatch: "Unauthorized, New-Api-User does not match logged in user"
 auth.user_banned: "User has been banned"
 auth.insufficient_privilege: "Unauthorized, insufficient privileges"
+agent.admin_agent_id_required: "Admins must open the agent console with agent_id from the Agents page, or create an agent profile for the current account first"
+agent.profile_required: "This account does not have an agent profile yet. Please contact an administrator"
 
 # Token messages
 token.name_too_long: "Token name is too long"

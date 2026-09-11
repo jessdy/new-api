@@ -34,6 +34,11 @@ type BaseNavItem = {
    * `useSidebarView`). Route-level guards still enforce access independently.
    */
   requiredRole?: number
+  /**
+   * When true with requiredRole, the item is shown only for that exact role
+   * (not higher roles). Used for agent-only console vs admin pages.
+   */
+  requiredRoleExact?: boolean
 }
 
 /**

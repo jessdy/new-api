@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -10,14 +11,61 @@ import (
 )
 
 // RequireAgent must run after UserAuth. It loads the caller's agent profile.
+// Admins/root may manage any agent by passing ?agent_id=; they may also use
+// their own agent profile when one exists.
 func RequireAgent() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		userId := c.GetInt("id")
+		role := c.GetInt("role")
+
+		if role >= common.RoleAdminUser {
+			if raw := c.Query("agent_id"); raw != "" {
+				agentId, err := strconv.Atoi(raw)
+				if err != nil || agentId <= 0 {
+					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+						"success": false,
+						"message": "invalid agent_id",
+					})
+					return
+				}
+				agent, err := model.GetAgentById(agentId)
+				if err != nil {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+						"success": false,
+						"message": "agent not found",
+					})
+					return
+				}
+				c.Set("agent_id", agent.Id)
+				c.Set("agent", agent)
+				c.Next()
+				return
+			}
+			if agent, err := model.GetAgentByUserId(userId); err == nil {
+				if agent.Status == model.AgentStatusDisabled {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+						"success": false,
+						"message": "agent is disabled",
+					})
+					return
+				}
+				c.Set("agent_id", agent.Id)
+				c.Set("agent", agent)
+				c.Next()
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAgentAdminAgentIdRequired),
+			})
+			return
+		}
+
 		agent, err := model.GetAgentByUserId(userId)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+				"message": common.TranslateMessage(c, i18n.MsgAgentProfileRequired),
 			})
 			return
 		}
