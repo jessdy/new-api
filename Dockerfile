@@ -12,8 +12,13 @@ ENV GO111MODULE=on CGO_ENABLED=0 GOWORK=off
 
 ARG TARGETOS
 ARG TARGETARCH
+# Domestic builds often fail on proxy.golang.org (EOF). Override at build time, e.g.:
+#   docker compose build --build-arg GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
 ENV GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64}
 ENV GOEXPERIMENT=greenteagc
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=sum.golang.google.cn
 
 WORKDIR /build
 
