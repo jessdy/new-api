@@ -46,8 +46,8 @@ type AgentGroup struct {
 	Id         int     `json:"id"`
 	AgentId    int     `json:"agent_id" gorm:"uniqueIndex:uk_agent_group_name;index;not null"`
 	Name       string  `json:"name" gorm:"type:varchar(64);uniqueIndex:uk_agent_group_name;not null"`
-	Ratio      float64 `json:"ratio" gorm:"type:double;not null;default:1"`
-	TopupRatio float64 `json:"topup_ratio" gorm:"type:double;not null;default:1"`
+	Ratio      float64 `json:"ratio" gorm:"type:decimal(16,8);not null;default:1"`
+	TopupRatio float64 `json:"topup_ratio" gorm:"type:decimal(16,8);not null;default:1"`
 	Enabled    bool    `json:"enabled"`
 	IsDefault  bool    `json:"is_default"`
 	CreatedAt  int64   `json:"created_at" gorm:"bigint;autoCreateTime"`
@@ -57,7 +57,7 @@ type AgentGroup struct {
 type AgentModelPrice struct {
 	AgentId       int     `json:"agent_id" gorm:"primaryKey;autoIncrement:false"`
 	Model         string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
-	DiscountRatio float64 `json:"discount_ratio" gorm:"type:double;not null;default:1"`
+	DiscountRatio float64 `json:"discount_ratio" gorm:"type:decimal(16,8);not null;default:1"`
 	UpdatedAt     int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
