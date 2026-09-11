@@ -86,6 +86,7 @@ type RelayInfo struct {
 	TokenKey          string
 	TokenGroup        string
 	UserId            int
+	AgentId           int
 	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
 	UserGroup         string // 用户所在分组
 	TokenUnlimited    bool
@@ -104,6 +105,12 @@ type RelayInfo struct {
 	// separate from OriginModelName and UpstreamModelName so virtual pricing
 	// aliases never participate in channel selection or upstream routing.
 	BillingModelName string
+
+	// PlatformQuota is the platform settlement basis for agent users (group_ratio=1,
+	// before agent discount). Zero for platform-direct users.
+	PlatformQuota int
+	// AgentDiscountRatio is the agent model discount applied to the user charge.
+	AgentDiscountRatio float64
 
 	RequestURLPath     string
 	RequestHeaders     map[string]string
@@ -544,6 +551,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		AgentId:    common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
 		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),

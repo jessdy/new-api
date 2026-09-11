@@ -37,13 +37,15 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	// admin baseline is written as explicit policy rows.
 	var count int64
 	require.NoError(t, db.Model(&model.CasbinRule{}).Count(&count).Error)
-	assert.Equal(t, int64(len(PermissionsForRole(BuiltInRoleAdmin))), count)
+	expectedPolicies := int64(len(PermissionsForRole(BuiltInRoleAdmin)) + len(PermissionsForRole(BuiltInRoleAgent)))
+	assert.Equal(t, expectedPolicies, count)
 
 	var roles []model.AuthzRole
 	require.NoError(t, db.Order("sort asc").Find(&roles).Error)
-	require.Len(t, roles, 2)
+	require.Len(t, roles, 3)
 	assert.Equal(t, BuiltInRoleRoot, roles[0].Key)
 	assert.Equal(t, BuiltInRoleAdmin, roles[1].Key)
+	assert.Equal(t, BuiltInRoleAgent, roles[2].Key)
 
 	assert.True(t, Can(1, common.RoleRootUser, ChannelSensitiveWrite))
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelRead))
@@ -51,6 +53,8 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelWrite))
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelSensitiveWrite))
 	assert.False(t, Can(3, common.RoleCommonUser, ChannelRead))
+	assert.True(t, Can(4, common.RoleAgentUser, AgentChannelRead))
+	assert.False(t, Can(4, common.RoleAgentUser, ChannelSecretView))
 }
 
 func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {
@@ -109,6 +113,25 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionBind: false,
 		},
 		ResourceAudit: {ActionRead: false},
+		ResourceAgentUser: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentChannel: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentPricing: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentPayment: {
+			ActionRead:  true,
+			ActionWrite: false,
+		},
+		ResourceAgentSettlement: {
+			ActionRead: true,
+		},
 	}, ExplicitUserPermissions(42))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
@@ -141,6 +164,25 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionBind: false,
 		},
 		ResourceAudit: {ActionRead: false},
+		ResourceAgentUser: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentChannel: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentPricing: {
+			ActionRead:  true,
+			ActionWrite: true,
+		},
+		ResourceAgentPayment: {
+			ActionRead:  true,
+			ActionWrite: false,
+		},
+		ResourceAgentSettlement: {
+			ActionRead: true,
+		},
 	}, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))
 }

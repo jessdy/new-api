@@ -8,6 +8,7 @@ import (
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	dto.FilterAgentChannels,
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
 }
@@ -75,6 +76,15 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 	if kind == dto.FilterRequestPath && !exists {
 		return true
 	}
+	if kind == dto.FilterAgentChannels {
+		if len(filters) == 0 {
+			return true
+		}
+		// Missing cache entry cannot be proven allowed; drop it.
+		if !exists || ch == nil {
+			return false
+		}
+	}
 	if !exists || ch == nil {
 		return false
 	}
@@ -88,6 +98,11 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterAgentChannels:
+		if len(filter.AllowedChannelIds) == 0 {
+			return false
+		}
+		return slices.Contains(filter.AllowedChannelIds, ch.Id)
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
 			return true

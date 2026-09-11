@@ -5,12 +5,14 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -55,6 +57,38 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 	if exists {
 		logger.LogDebug(ctx, "final group: %s", autoGroup)
 		relayInfo.UsingGroup = autoGroup.(string)
+	}
+
+	agentId := 0
+	if relayInfo != nil {
+		agentId = relayInfo.AgentId
+	}
+	if agentId <= 0 && ctx != nil {
+		agentId = common.GetContextKeyInt(ctx, constant.ContextKeyUserAgentId)
+		if relayInfo != nil {
+			relayInfo.AgentId = agentId
+		}
+	}
+
+	if agentId > 0 {
+		if ratio, ok := service.GetAgentGroupRatio(agentId, relayInfo.UsingGroup); ok {
+			groupRatioInfo.GroupRatio = ratio
+			groupRatioInfo.HasSpecialRatio = true
+			groupRatioInfo.GroupSpecialRatio = ratio
+		} else {
+			groupRatioInfo.GroupRatio = 1
+		}
+		discount := 1.0
+		modelName := relayInfo.GetBillingModelName()
+		if modelName == "" {
+			modelName = relayInfo.OriginModelName
+		}
+		if d, ok := model.GetAgentModelDiscount(agentId, modelName); ok {
+			discount = d
+		}
+		relayInfo.AgentDiscountRatio = discount
+		groupRatioInfo.GroupRatio = groupRatioInfo.GroupRatio * discount
+		return groupRatioInfo
 	}
 
 	// check user group special ratio

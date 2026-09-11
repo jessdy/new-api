@@ -24,16 +24,52 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+	userId := c.GetInt("id")
+	agentId := resolveUserAgentId(userId)
 
-	// 获取支付方式
-	payMethods := operation_setting.PayMethods
-	if !complianceConfirmed {
-		payMethods = []map[string]string{}
+	var payMethods []map[string]string
+	enableOnlineTopup := false
+	enableStripe := false
+	stripeMinTopUp := setting.StripeMinTopUp
+	enableWaffo := false
+	enableWaffoPancake := false
+	enableCreem := false
+
+	if agentId > 0 {
+		agent, err := model.GetAgentById(agentId)
+		if err == nil && agent != nil {
+			cfg, cfgErr := agent.GetPaymentConfig()
+			if cfgErr == nil {
+				if complianceConfirmed && cfg.EpayEnabled {
+					payMethods = cfg.PayMethods
+					if payMethods == nil {
+						payMethods = []map[string]string{}
+					}
+					enableOnlineTopup = len(payMethods) > 0 && cfg.PayAddress != "" && cfg.EpayId != "" && cfg.EpayKey != ""
+				} else {
+					payMethods = []map[string]string{}
+				}
+				if complianceConfirmed && cfg.StripeEnabled && cfg.StripeApiSecret != "" && cfg.StripePriceId != "" {
+					enableStripe = true
+					if cfg.StripeMinTopUp > 0 {
+						stripeMinTopUp = cfg.StripeMinTopUp
+					}
+				}
+			}
+		}
+	} else {
+		payMethods = operation_setting.PayMethods
+		if !complianceConfirmed {
+			payMethods = []map[string]string{}
+		}
+		enableOnlineTopup = isEpayTopUpEnabled()
+		enableStripe = isStripeTopUpEnabled()
+		enableWaffoPancake = isWaffoPancakeTopUpEnabled()
+		enableWaffo = isWaffoTopUpEnabled()
+		enableCreem = isCreemTopUpEnabled()
 	}
 
-	// 如果启用了 Stripe 支付，添加到支付方法列表
-	if isStripeTopUpEnabled() {
-		// 检查是否已经包含 Stripe
+	if enableStripe {
 		hasStripe := false
 		for _, method := range payMethods {
 			if method["type"] == "stripe" {
@@ -41,20 +77,16 @@ func GetTopUpInfo(c *gin.Context) {
 				break
 			}
 		}
-
 		if !hasStripe {
-			stripeMethod := map[string]string{
+			payMethods = append(payMethods, map[string]string{
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "#635BFF",
-				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
-			}
-			payMethods = append(payMethods, stripeMethod)
+				"min_topup": strconv.Itoa(stripeMinTopUp),
+			})
 		}
 	}
 
-	// Waffo Pancake is displayed above the standard Waffo gateway.
-	enableWaffoPancake := isWaffoPancakeTopUpEnabled()
 	if enableWaffoPancake {
 		hasWaffoPancake := false
 		for _, method := range payMethods {
@@ -63,7 +95,6 @@ func GetTopUpInfo(c *gin.Context) {
 				break
 			}
 		}
-
 		if !hasWaffoPancake {
 			payMethods = append(payMethods, map[string]string{
 				"name":      "Waffo Pancake",
@@ -74,8 +105,6 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
-	// 如果启用了 Waffo 支付，添加到支付方法列表
-	enableWaffo := isWaffoTopUpEnabled()
 	if enableWaffo {
 		hasWaffo := false
 		for _, method := range payMethods {
@@ -84,25 +113,23 @@ func GetTopUpInfo(c *gin.Context) {
 				break
 			}
 		}
-
 		if !hasWaffo {
-			waffoMethod := map[string]string{
+			payMethods = append(payMethods, map[string]string{
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
 				"color":     "#3B82F6",
 				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
-			}
-			payMethods = append(payMethods, waffoMethod)
+			})
 		}
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled(),
-		"enable_stripe_topup":              isStripeTopUpEnabled(),
-		"enable_creem_topup":               isCreemTopUpEnabled(),
+		"enable_online_topup":              enableOnlineTopup,
+		"enable_stripe_topup":              enableStripe,
+		"enable_creem_topup":               enableCreem,
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
-		"enable_redemption":                complianceConfirmed,
+		"enable_redemption":                complianceConfirmed && agentId == 0,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
 		"waffo_pay_methods": func() any {
@@ -114,12 +141,13 @@ func GetTopUpInfo(c *gin.Context) {
 		"creem_products":          setting.CreemProducts,
 		"pay_methods":             payMethods,
 		"min_topup":               operation_setting.MinTopUp,
-		"stripe_min_topup":        setting.StripeMinTopUp,
+		"stripe_min_topup":        stripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
+		"agent_id":                agentId,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -288,13 +316,29 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
+	payMoney := getPayMoneyForUser(id, req.Amount, group)
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	gateway, err := resolveEpayGatewayForUser(id)
+	if err != nil || gateway == nil || gateway.Client == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前未配置支付信息"})
+		return
+	}
+	methodOK := false
+	for _, method := range gateway.Methods {
+		if method["type"] == req.PaymentMethod {
+			methodOK = true
+			break
+		}
+	}
+	if !methodOK && gateway.AgentId == 0 && !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
+		return
+	}
+	if !methodOK && gateway.AgentId > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
@@ -304,11 +348,7 @@ func RequestEpay(c *gin.Context) {
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
-	client := GetEpayClient()
-	if client == nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
-		return
-	}
+	client := gateway.Client
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
@@ -338,6 +378,7 @@ func RequestEpay(c *gin.Context) {
 		PaymentProvider: model.PaymentProviderEpay,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
+		AgentId:         gateway.AgentId,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -425,7 +466,22 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	client := GetEpayClient()
+	tradeNo := params["out_trade_no"]
+	if tradeNo == "" {
+		tradeNo = params["service_trade_no"]
+	}
+	var client *epay.Client
+	if tradeNo != "" {
+		if topUp := model.GetTopUpByTradeNo(tradeNo); topUp != nil {
+			gateway, resolveErr := resolveEpayGatewayForTopUp(topUp)
+			if resolveErr == nil && gateway != nil {
+				client = gateway.Client
+			}
+		}
+	}
+	if client == nil {
+		client = GetEpayClient()
+	}
 	if client == nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, err := c.Writer.Write([]byte("fail"))

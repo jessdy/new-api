@@ -3,6 +3,7 @@ package authz
 const (
 	BuiltInRoleRoot  = "root"
 	BuiltInRoleAdmin = "admin"
+	BuiltInRoleAgent = "agent"
 )
 
 // RoleSpec describes a role. A superuser role is allowed every permission
@@ -32,6 +33,14 @@ var builtInRoles = []RoleSpec{
 		BuiltIn:     true,
 		Superuser:   false,
 		Sort:        10,
+	},
+	{
+		Key:         BuiltInRoleAgent,
+		Name:        "Agent",
+		Description: "Built-in agent/reseller authorization role",
+		BuiltIn:     true,
+		Superuser:   false,
+		Sort:        20,
 	},
 }
 

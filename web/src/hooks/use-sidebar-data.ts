@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  BriefcaseBusiness,
   ClipboardList,
   CreditCard,
   FileText,
@@ -126,6 +127,12 @@ export function useSidebarData(): SidebarData {
             url: '/security',
             icon: ShieldCheck,
           },
+          {
+            title: t('Agent Console'),
+            url: '/agent',
+            icon: BriefcaseBusiness,
+            requiredRole: ROLE.AGENT,
+          },
         ],
       },
       {
@@ -146,6 +153,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Agents'),
+            url: '/agents',
+            icon: BriefcaseBusiness,
           },
           {
             title: t('Redemption Codes'),

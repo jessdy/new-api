@@ -125,7 +125,22 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	appendAgentInfo(relayInfo, other)
 	return other
+}
+
+func appendAgentInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
+	if relayInfo == nil || other == nil || relayInfo.AgentId <= 0 {
+		return
+	}
+	other.SetAdmin("agent_id", relayInfo.AgentId)
+	other.SetAdmin("user_quota", relayInfo.PriceData.QuotaToPreConsume)
+	if relayInfo.PlatformQuota > 0 {
+		other.SetAdmin("platform_quota", relayInfo.PlatformQuota)
+	}
+	if relayInfo.AgentDiscountRatio > 0 {
+		other.SetAdmin("agent_discount_ratio", relayInfo.AgentDiscountRatio)
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {

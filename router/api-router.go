@@ -60,6 +60,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
+		apiRouter.POST("/stripe/webhook/:agent_id", anonymousRequestBodyLimit, controller.AgentStripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, controller.WaffoWebhook)
 		// :env separates test vs prod URLs so the operator can register each
@@ -419,6 +420,36 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
 			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+		}
+
+		agentRoute := apiRouter.Group("/agent")
+		agentRoute.Use(middleware.UserAuth(), middleware.RequireAgent())
+		{
+			agentRoute.GET("/self", controller.AgentGetSelf)
+			agentRoute.GET("/channels", middleware.RequirePermission(authz.AgentChannelRead), controller.AgentListSelectableChannels)
+			agentRoute.PUT("/channels", middleware.RequirePermission(authz.AgentChannelWrite), controller.AgentReplaceChannels)
+			agentRoute.GET("/groups", middleware.RequirePermission(authz.AgentPricingRead), controller.AgentListGroups)
+			agentRoute.PUT("/groups", middleware.RequirePermission(authz.AgentPricingWrite), controller.AgentUpsertGroup)
+			agentRoute.DELETE("/groups/:name", middleware.RequirePermission(authz.AgentPricingWrite), controller.AgentDeleteGroup)
+			agentRoute.GET("/model-prices", middleware.RequirePermission(authz.AgentPricingRead), controller.AgentListModelPrices)
+			agentRoute.PUT("/model-prices", middleware.RequirePermission(authz.AgentPricingWrite), controller.AgentUpsertModelPrice)
+			agentRoute.DELETE("/model-prices/:model", middleware.RequirePermission(authz.AgentPricingWrite), controller.AgentDeleteModelPrice)
+			agentRoute.GET("/users", middleware.RequirePermission(authz.AgentUserRead), controller.AgentListUsers)
+			agentRoute.PUT("/users/:id", middleware.RequirePermission(authz.AgentUserWrite), controller.AgentUpdateUser)
+			agentRoute.GET("/payment", middleware.RequirePermission(authz.AgentPaymentRead), controller.AgentGetPaymentConfig)
+			agentRoute.PUT("/payment", middleware.RequirePermission(authz.AgentPaymentWrite), controller.AgentUpdatePaymentConfig)
+			agentRoute.GET("/settlement", middleware.RequirePermission(authz.AgentSettlementRead), controller.AgentListSettlementBills)
+		}
+
+		adminAgentsRoute := apiRouter.Group("/agents")
+		adminAgentsRoute.Use(middleware.AdminAuth())
+		{
+			adminAgentsRoute.GET("/", controller.AdminListAgents)
+			adminAgentsRoute.POST("/", controller.AdminCreateAgent)
+			adminAgentsRoute.PUT("/:id", controller.AdminUpdateAgent)
+			adminAgentsRoute.GET("/settlement-bills", controller.AdminListAgentSettlementBills)
+			adminAgentsRoute.POST("/:id/settlement-bills", controller.AdminCreateAgentSettlementBill)
+			adminAgentsRoute.POST("/settlement-bills/:bill_id/paid", controller.AdminMarkAgentSettlementBillPaid)
 		}
 	}
 }

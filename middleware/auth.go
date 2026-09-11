@@ -465,20 +465,40 @@ func TokenAuth() func(c *gin.Context) {
 
 		userCache.WriteContext(c)
 
+		agentId := userCache.AgentId
+		if agentId > 0 {
+			if apiErr := service.EnsureAgentRequestAllowed(c, agentId); apiErr != nil {
+				abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error())
+				return
+			}
+		}
+
 		userGroup := userCache.Group
 		tokenGroup := token.Group
 		if tokenGroup != "" {
-			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			if agentId > 0 {
+				if !service.AgentOwnsGroup(agentId, tokenGroup) && tokenGroup != "auto" {
+					usable := service.ListAgentUsableGroups(agentId)
+					if _, ok := usable[tokenGroup]; !ok {
+						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
+						return
+					}
+				}
+			} else if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
-			// check group in common.GroupRatio
-			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
-				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
-					return
+			if agentId <= 0 {
+				// check group in common.GroupRatio
+				if !ratio_setting.ContainsGroupRatio(tokenGroup) {
+					if tokenGroup != "auto" {
+						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+						return
+					}
 				}
+			} else if tokenGroup != "auto" && !service.AgentOwnsGroup(agentId, tokenGroup) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+				return
 			}
 			userGroup = tokenGroup
 		}

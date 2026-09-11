@@ -40,6 +40,22 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 	return groupsCopy
 }
 
+// GetUserUsableGroupsForUser resolves usable groups, preferring agent-scoped
+// groups when the user belongs to an agent.
+func GetUserUsableGroupsForUser(user *model.User) map[string]string {
+	if user != nil && user.AgentId > 0 {
+		agentGroups := ListAgentUsableGroups(user.AgentId)
+		if len(agentGroups) > 0 {
+			return agentGroups
+		}
+	}
+	group := ""
+	if user != nil {
+		group = user.Group
+	}
+	return GetUserUsableGroups(group)
+}
+
 func GroupInUserUsableGroups(userGroup, groupName string) bool {
 	_, ok := GetUserUsableGroups(userGroup)[groupName]
 	return ok
@@ -130,4 +146,12 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+// GetUserGroupRatioForAgent returns agent-scoped group ratio when available.
+func GetUserGroupRatioForAgent(agentId int, userGroup, group string) float64 {
+	if ratio, ok := GetAgentGroupRatio(agentId, group); ok {
+		return ratio
+	}
+	return GetUserGroupRatio(userGroup, group)
 }

@@ -111,10 +111,15 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	filters := GetChannelConstraints(param.Ctx).Filters
+	agentChannelIds := agentAllowedChannelIds(filters)
 
 	if param.TokenGroup == "auto" {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
 		if len(autoGroups) == 0 {
+			if len(agentChannelIds) > 0 {
+				channel, err = model.GetRandomSatisfiedChannelAmongIds(agentChannelIds, param.ModelName, param.GetRetry(), filters)
+				return channel, selectGroup, err
+			}
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
 
@@ -183,6 +188,10 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			break
 		}
+		if channel == nil && len(agentChannelIds) > 0 {
+			channel, err = model.GetRandomSatisfiedChannelAmongIds(agentChannelIds, param.ModelName, param.GetRetry(), filters)
+			return channel, selectGroup, err
+		}
 	} else {
 		channel, err = model.GetRandomSatisfiedChannel(
 			param.TokenGroup,
@@ -193,8 +202,21 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
+		if channel == nil && len(agentChannelIds) > 0 {
+			channel, err = model.GetRandomSatisfiedChannelAmongIds(agentChannelIds, param.ModelName, param.GetRetry(), filters)
+			return channel, selectGroup, err
+		}
 	}
 	return channel, selectGroup, nil
+}
+
+func agentAllowedChannelIds(filters []dto.ChannelFilter) []int {
+	for _, filter := range filters {
+		if filter.Kind == dto.FilterAgentChannels {
+			return filter.AllowedChannelIds
+		}
+	}
+	return nil
 }
 
 func pinnedTaskPluginChannelTypes(c *gin.Context, expected string) []int {

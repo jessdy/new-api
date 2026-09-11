@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -74,10 +75,6 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
 	}
-	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup()), "data": 10})
-		return
-	}
 	if req.Amount > 10000 {
 		c.JSON(http.StatusOK, gin.H{"message": "充值数量不能大于 10000", "data": 10})
 		return
@@ -99,7 +96,26 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "用户不存在"})
 		return
 	}
+	gateway, err := resolveStripeGatewayForUser(id)
+	if err != nil || gateway == nil || !gateway.Enabled {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前未配置 Stripe 支付"})
+		return
+	}
+	minTopup := getStripeMinTopup()
+	if gateway.AgentId > 0 && gateway.MinTopUp > 0 {
+		minTopup = int64(gateway.MinTopUp)
+	}
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", minTopup), "data": 10})
+		return
+	}
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
+	if gateway.AgentId > 0 {
+		ratio := service.GetAgentTopupRatio(gateway.AgentId, user.Group)
+		if ratio > 0 {
+			chargedMoney = chargedMoney * ratio
+		}
+	}
 	if rejectInvalidCreditedQuota(c, id,
 		decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 	) {
@@ -109,7 +125,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	payLink, err := genStripeLinkWithGateway(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL, gateway)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -125,6 +141,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		PaymentProvider: model.PaymentProviderStripe,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
+		AgentId:         gateway.AgentId,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -162,8 +179,27 @@ func RequestStripePay(c *gin.Context) {
 }
 
 func StripeWebhook(c *gin.Context) {
+	handleStripeWebhook(c, 0)
+}
+
+func AgentStripeWebhook(c *gin.Context) {
+	agentId, err := strconv.Atoi(c.Param("agent_id"))
+	if err != nil || agentId <= 0 {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	handleStripeWebhook(c, agentId)
+}
+
+func handleStripeWebhook(c *gin.Context, agentId int) {
 	ctx := c.Request.Context()
-	if !isStripeWebhookEnabled() {
+	gateway, err := resolveStripeGatewayForAgent(agentId)
+	if err != nil || gateway == nil || gateway.WebhookSecret == "" {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s agent_id=%d", c.Request.RequestURI, c.ClientIP(), agentId))
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	if agentId == 0 && !isStripeWebhookEnabled() {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		c.AbortWithStatus(http.StatusForbidden)
 		return
@@ -178,7 +214,7 @@ func StripeWebhook(c *gin.Context) {
 
 	signature := c.GetHeader("Stripe-Signature")
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, string(payload)))
-	event, err := webhook.ConstructEventWithOptions(payload, signature, setting.StripeWebhookSecret, webhook.ConstructEventOptions{
+	event, err := webhook.ConstructEventWithOptions(payload, signature, gateway.WebhookSecret, webhook.ConstructEventOptions{
 		IgnoreAPIVersionMismatch: true,
 	})
 
@@ -356,11 +392,19 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 //
 // Returns the checkout session URL or an error if the session creation fails.
 func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
-	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+	gateway, _ := resolveStripeGatewayForAgent(0)
+	return genStripeLinkWithGateway(referenceId, customerId, email, amount, successURL, cancelURL, gateway)
+}
+
+func genStripeLinkWithGateway(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string, gateway *resolvedStripeGateway) (string, error) {
+	if gateway == nil {
+		return "", fmt.Errorf("stripe gateway is nil")
+	}
+	if !strings.HasPrefix(gateway.ApiSecret, "sk_") && !strings.HasPrefix(gateway.ApiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
 	}
 
-	stripe.Key = setting.StripeApiSecret
+	stripe.Key = gateway.ApiSecret
 
 	// Use custom URLs if provided, otherwise use defaults
 	if successURL == "" {
@@ -370,13 +414,18 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		cancelURL = paymentReturnPath("/wallet")
 	}
 
+	priceId := gateway.PriceId
+	if priceId == "" {
+		priceId = setting.StripePriceId
+	}
+
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(successURL),
 		CancelURL:         stripe.String(cancelURL),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				Price:    stripe.String(setting.StripePriceId),
+				Price:    stripe.String(priceId),
 				Quantity: stripe.Int64(amount),
 			},
 		},

@@ -370,6 +370,11 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&CasbinRule{},
 		&AuthzRole{},
+		&Agent{},
+		&AgentChannel{},
+		&AgentGroup{},
+		&AgentModelPrice{},
+		&AgentSettlementBill{},
 	)
 	if err != nil {
 		return err

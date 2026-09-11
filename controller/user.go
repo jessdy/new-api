@@ -271,12 +271,29 @@ func Register(c *gin.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	agentId := 0
+	agentGroup := ""
+	if agent, err := model.GetAgentByInviteCode(affCode); err == nil && agent != nil {
+		if agent.Status == model.AgentStatusEnabled {
+			agentId = agent.Id
+			agentGroup, _ = model.GetAgentDefaultGroupName(agent.Id)
+		}
+	} else if inviterId > 0 {
+		if agent, err := model.GetAgentByUserId(inviterId); err == nil && agent != nil && agent.Status == model.AgentStatusEnabled {
+			agentId = agent.Id
+			agentGroup, _ = model.GetAgentDefaultGroupName(agent.Id)
+		}
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
 		InviterId:   inviterId,
+		AgentId:     agentId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+	}
+	if agentGroup != "" {
+		cleanUser.Group = agentGroup
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email

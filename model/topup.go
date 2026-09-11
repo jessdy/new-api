@@ -23,6 +23,7 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+	AgentId         int     `json:"agent_id" gorm:"index;default:0"`
 }
 
 const (
