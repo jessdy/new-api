@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useNavigate } from '@tanstack/react-router'
 import type { Row } from '@tanstack/react-table'
 import {
   Pencil,
@@ -28,6 +29,7 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  BriefcaseBusiness,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -46,6 +48,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { adminCreateAgent, adminListAgents } from '@/features/agent/api'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -67,12 +70,15 @@ interface DataTableRowActionsProps {
 
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const user = row.original
   const { setOpen, setCurrentRow, triggerRefresh } = useUsers()
   const [resetPasskeyOpen, setResetPasskeyOpen] = useState(false)
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [makeAgentOpen, setMakeAgentOpen] = useState(false)
+  const [makeAgentPending, setMakeAgentPending] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -130,9 +136,48 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     }
   }
 
+  const handleMakeAgent = async () => {
+    setMakeAgentPending(true)
+    try {
+      const agent = await adminCreateAgent({
+        user_id: user.id,
+        name: user.display_name?.trim() || user.username,
+        status: 'enabled',
+      })
+      toast.success(
+        t('User {{username}} is now an agent. Invite code: {{code}}', {
+          username: user.username,
+          code: agent.invite_code,
+        })
+      )
+      setMakeAgentOpen(false)
+      triggerRefresh()
+      void navigate({ to: '/agent', search: { agent_id: agent.id } })
+    } catch (error) {
+      handleServerError(error, t('Failed to make user an agent'))
+    } finally {
+      setMakeAgentPending(false)
+    }
+  }
+
+  const handleOpenAgentConsole = async () => {
+    try {
+      const result = await adminListAgents(1, 1, '', user.id)
+      const agent = result.items?.[0]
+      if (!agent) {
+        toast.error(t('Agent profile not found for this user'))
+        return
+      }
+      void navigate({ to: '/agent', search: { agent_id: agent.id } })
+    } catch (error) {
+      handleServerError(error, t('Failed to open agent console'))
+    }
+  }
+
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
+  const isAgent = user.role === USER_ROLE.AGENT
 
   if (isUserDeleted(user)) {
     return null
@@ -158,7 +203,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
 
       <DataTableRowActionMenu
         ariaLabel={t('Open menu')}
-        contentClassName='w-48'
+        contentClassName='w-56'
       >
         {isDisabled ? (
           <DropdownMenuItem onClick={() => handleManage('enable')}>
@@ -193,6 +238,34 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             {t('Promote')}
             <DropdownMenuShortcut>
               <ArrowUp size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+        )}
+
+        {!isRoot && !isAgent && (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              setMakeAgentOpen(true)
+            }}
+          >
+            {t('Make Agent')}
+            <DropdownMenuShortcut>
+              <BriefcaseBusiness size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+        )}
+
+        {isAgent && (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              void handleOpenAgentConsole()
+            }}
+          >
+            {t('Agent Console')}
+            <DropdownMenuShortcut>
+              <BriefcaseBusiness size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
@@ -262,6 +335,19 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DataTableRowActionMenu>
+
+      <ConfirmDialog
+        open={makeAgentOpen}
+        onOpenChange={setMakeAgentOpen}
+        title={t('Make Agent')}
+        desc={t(
+          'Make {{username}} an agent? They will get an agent console, invite code, and reseller permissions.',
+          { username: user.username }
+        )}
+        confirmText={t('Make Agent')}
+        handleConfirm={handleMakeAgent}
+        isLoading={makeAgentPending}
+      />
 
       <ConfirmDialog
         open={resetPasskeyOpen}

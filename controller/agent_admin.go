@@ -12,6 +12,7 @@ import (
 
 type createAgentRequest struct {
 	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
 	Name        string `json:"name"`
 	InviteCode  string `json:"invite_code"`
 	CreditLimit int64  `json:"credit_limit"`
@@ -41,7 +42,8 @@ func AdminListAgents(c *gin.Context) {
 		pageSize = 20
 	}
 	status := strings.TrimSpace(c.Query("status"))
-	agents, total, err := model.ListAgents((page-1)*pageSize, pageSize, status)
+	userId, _ := strconv.Atoi(c.Query("user_id"))
+	agents, total, err := model.ListAgents((page-1)*pageSize, pageSize, status, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -68,16 +70,35 @@ func AdminCreateAgent(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if req.UserId <= 0 || strings.TrimSpace(req.Name) == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user_id and name are required"})
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "name is required"})
 		return
 	}
-	user, err := model.GetUserById(req.UserId, false)
+
+	userId := req.UserId
+	if userId <= 0 {
+		username := strings.TrimSpace(req.Username)
+		if username == "" {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "user_id or username is required"})
+			return
+		}
+		var found model.User
+		if err := model.DB.Select("id", "role", "status", "username").
+			Where("username = ?", username).
+			First(&found).Error; err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "user not found"})
+			return
+		}
+		userId = found.Id
+	}
+
+	user, err := model.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if _, err := model.GetAgentByUserId(req.UserId); err == nil {
+	if _, err := model.GetAgentByUserId(userId); err == nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user is already an agent"})
 		return
 	}
@@ -86,8 +107,8 @@ func AdminCreateAgent(c *gin.Context) {
 		status = model.AgentStatusEnabled
 	}
 	agent := &model.Agent{
-		UserId:      req.UserId,
-		Name:        strings.TrimSpace(req.Name),
+		UserId:      userId,
+		Name:        name,
 		InviteCode:  strings.TrimSpace(req.InviteCode),
 		CreditLimit: req.CreditLimit,
 		Status:      status,

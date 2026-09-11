@@ -203,9 +203,19 @@ export async function listAgentSettlement(agentId?: number) {
   }
 }
 
-export async function adminListAgents(page = 1, pageSize = 20, status = '') {
+export async function adminListAgents(
+  page = 1,
+  pageSize = 20,
+  status = '',
+  userId?: number
+) {
   const res = await api.get('/api/agents/', {
-    params: { p: page, page_size: pageSize, status },
+    params: {
+      p: page,
+      page_size: pageSize,
+      status,
+      ...(userId && userId > 0 ? { user_id: userId } : {}),
+    },
   })
   requireServerSuccess(res.data, 'Failed to load agents')
   return res.data.data as {
@@ -217,7 +227,8 @@ export async function adminListAgents(page = 1, pageSize = 20, status = '') {
 }
 
 export async function adminCreateAgent(payload: {
-  user_id: number
+  user_id?: number
+  username?: string
   name: string
   invite_code?: string
   credit_limit?: number

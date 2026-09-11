@@ -171,10 +171,13 @@ func UpdateAgentFields(id int, fields map[string]any) error {
 	return nil
 }
 
-func ListAgents(offset, limit int, status string) ([]*Agent, int64, error) {
+func ListAgents(offset, limit int, status string, userId int) ([]*Agent, int64, error) {
 	query := DB.Model(&Agent{})
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

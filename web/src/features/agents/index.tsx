@@ -43,21 +43,39 @@ export function AgentsAdmin() {
     queryKey: ['admin', 'agents'],
     queryFn: () => adminListAgents(1, 50),
   })
-  const [userId, setUserId] = useState('')
+  const [userRef, setUserRef] = useState('')
   const [name, setName] = useState('')
   const [creditLimit, setCreditLimit] = useState('0')
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      adminCreateAgent({
-        user_id: Number(userId),
-        name,
-        credit_limit: Number(creditLimit) || 0,
+    mutationFn: (input: {
+      userRef: string
+      name: string
+      creditLimit: string
+    }) => {
+      const trimmedUser = input.userRef.trim()
+      const trimmedName = input.name.trim()
+      if (!trimmedUser) {
+        throw new Error(t('User ID or username is required'))
+      }
+      if (!trimmedName) {
+        throw new Error(t('Agent name is required'))
+      }
+      const asId = Number(trimmedUser)
+      const payload =
+        Number.isInteger(asId) && asId > 0 && String(asId) === trimmedUser
+          ? { user_id: asId }
+          : { username: trimmedUser }
+      return adminCreateAgent({
+        ...payload,
+        name: trimmedName,
+        credit_limit: Number(input.creditLimit) || 0,
         status: 'enabled',
-      }),
+      })
+    },
     onSuccess: () => {
       toast.success(t('Agent created'))
-      setUserId('')
+      setUserRef('')
       setName('')
       void queryClient.invalidateQueries({ queryKey: ['admin', 'agents'] })
     },
@@ -70,22 +88,51 @@ export function AgentsAdmin() {
       <SectionPageLayout.Content>
         <div className='space-y-6'>
         <div className='text-muted-foreground text-sm'>
-          {t('Approve resellers, set credit limits, and settle platform bills.')}
+          {t('Approve resellers, set credit limits, and settle platform bills.')}{' '}
+          {t('Tip: you can also make a user an agent from Users → row menu → Make Agent.')}
         </div>
-        <div className='grid max-w-xl gap-3 rounded-md border p-4'>
-          <Label>{t('User ID')}</Label>
-          <Input value={userId} onChange={(e) => setUserId(e.target.value)} />
-          <Label>{t('Agent name')}</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-          <Label>{t('Credit limit')}</Label>
+        <form
+          className='grid max-w-xl gap-3 rounded-md border p-4'
+          onSubmit={(event) => {
+            event.preventDefault()
+            const fd = new FormData(event.currentTarget)
+            createMutation.mutate({
+              userRef: String(fd.get('user_ref') ?? '').trim() || userRef,
+              name: String(fd.get('name') ?? '').trim() || name,
+              creditLimit:
+                String(fd.get('credit_limit') ?? '').trim() || creditLimit,
+            })
+          }}
+        >
+          <Label htmlFor='agent-user-ref'>{t('User ID or username')}</Label>
           <Input
+            id='agent-user-ref'
+            name='user_ref'
+            value={userRef}
+            placeholder={t('e.g. 12 or alice')}
+            onChange={(e) => setUserRef(e.target.value)}
+            autoComplete='off'
+          />
+          <Label htmlFor='agent-name'>{t('Agent name')}</Label>
+          <Input
+            id='agent-name'
+            name='name'
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete='off'
+          />
+          <Label htmlFor='agent-credit'>{t('Credit limit')}</Label>
+          <Input
+            id='agent-credit'
+            name='credit_limit'
             value={creditLimit}
             onChange={(e) => setCreditLimit(e.target.value)}
+            autoComplete='off'
           />
-          <Button onClick={() => createMutation.mutate()}>
+          <Button type='submit' disabled={createMutation.isPending}>
             {t('Create agent')}
           </Button>
-        </div>
+        </form>
 
         <div className='space-y-3'>
           {(agentsQuery.data?.items ?? []).map((agent) => (
