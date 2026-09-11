@@ -298,41 +298,95 @@ func AgentUpdatePaymentConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	var patch model.AgentPaymentConfig
-	if err := c.ShouldBindJSON(&patch); err != nil {
+	var patch map[string]any
+	if err := common.DecodeJson(c.Request.Body, &patch); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	merged := current
-	merged.EpayEnabled = patch.EpayEnabled
-	if patch.PayAddress != "" {
-		merged.PayAddress = patch.PayAddress
+
+	if v, ok := patch["price"].(float64); ok {
+		merged.Price = v
 	}
-	if patch.EpayId != "" && !strings.Contains(patch.EpayId, "*") {
-		merged.EpayId = patch.EpayId
+	if v, ok := patch["min_topup"].(float64); ok {
+		merged.MinTopUp = int(v)
 	}
-	if patch.EpayKey != "" {
-		merged.EpayKey = patch.EpayKey
+	if raw, ok := patch["amount_options"]; ok {
+		b, _ := common.Marshal(raw)
+		var options []int
+		_ = common.Unmarshal(b, &options)
+		if options == nil {
+			options = []int{}
+		}
+		merged.AmountOptions = options
 	}
-	if patch.PayMethods != nil {
-		merged.PayMethods = patch.PayMethods
+	if raw, ok := patch["amount_discount"]; ok {
+		b, _ := common.Marshal(raw)
+		var discount map[int]float64
+		_ = common.Unmarshal(b, &discount)
+		if discount == nil {
+			discount = map[int]float64{}
+		}
+		merged.AmountDiscount = discount
 	}
-	merged.StripeEnabled = patch.StripeEnabled
-	if patch.StripeApiSecret != "" {
-		merged.StripeApiSecret = patch.StripeApiSecret
+	if v, ok := patch["epay_enabled"].(bool); ok {
+		merged.EpayEnabled = v
 	}
-	if patch.StripeWebhookSecret != "" {
-		merged.StripeWebhookSecret = patch.StripeWebhookSecret
+	if v, ok := patch["pay_address"].(string); ok {
+		merged.PayAddress = strings.TrimSpace(v)
 	}
-	if patch.StripePriceId != "" {
-		merged.StripePriceId = patch.StripePriceId
+	if v, ok := patch["custom_callback_address"].(string); ok {
+		merged.CustomCallbackAddress = strings.TrimSpace(v)
 	}
-	if patch.StripeUnitPrice > 0 {
-		merged.StripeUnitPrice = patch.StripeUnitPrice
+	if v, ok := patch["epay_id"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" && !strings.Contains(v, "*") {
+			merged.EpayId = v
+		}
 	}
-	if patch.StripeMinTopUp > 0 {
-		merged.StripeMinTopUp = patch.StripeMinTopUp
+	if v, ok := patch["epay_key"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			merged.EpayKey = v
+		}
 	}
+	if raw, ok := patch["pay_methods"]; ok {
+		b, _ := common.Marshal(raw)
+		var methods []map[string]string
+		_ = common.Unmarshal(b, &methods)
+		if methods == nil {
+			methods = []map[string]string{}
+		}
+		merged.PayMethods = methods
+	}
+	if v, ok := patch["stripe_enabled"].(bool); ok {
+		merged.StripeEnabled = v
+	}
+	if v, ok := patch["stripe_api_secret"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			merged.StripeApiSecret = v
+		}
+	}
+	if v, ok := patch["stripe_webhook_secret"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			merged.StripeWebhookSecret = v
+		}
+	}
+	if v, ok := patch["stripe_price_id"].(string); ok {
+		merged.StripePriceId = strings.TrimSpace(v)
+	}
+	if v, ok := patch["stripe_unit_price"].(float64); ok {
+		merged.StripeUnitPrice = v
+	}
+	if v, ok := patch["stripe_min_topup"].(float64); ok {
+		merged.StripeMinTopUp = int(v)
+	}
+	if v, ok := patch["stripe_promotion_codes_enabled"].(bool); ok {
+		merged.StripePromotionCodesEnabled = v
+	}
+
 	if err := agent.SetPaymentConfig(merged); err != nil {
 		common.ApiError(c, err)
 		return

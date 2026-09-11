@@ -75,9 +75,15 @@ export type AgentUser = {
 }
 
 export type AgentPaymentConfigView = {
+  price: number
+  min_topup: number
+  amount_options: number[]
+  amount_discount: Record<string, number>
   epay_enabled: boolean
   pay_address: string
+  custom_callback_address: string
   epay_id: string
+  epay_id_set: boolean
   epay_key_set: boolean
   pay_methods: Array<Record<string, string>>
   stripe_enabled: boolean
@@ -86,6 +92,7 @@ export type AgentPaymentConfigView = {
   stripe_price_id: string
   stripe_unit_price: number
   stripe_min_topup: number
+  stripe_promotion_codes_enabled: boolean
 }
 
 export async function getAgentSelf(agentId?: number): Promise<AgentSummary> {

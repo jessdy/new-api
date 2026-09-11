@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 	userId := c.GetInt("id")
 	agentId := resolveUserAgentId(userId)
+	pricing := resolveAgentTopUpPricing(userId)
 
 	var payMethods []map[string]string
 	enableOnlineTopup := false
@@ -140,12 +142,12 @@ func GetTopUpInfo(c *gin.Context) {
 		}(),
 		"creem_products":          setting.CreemProducts,
 		"pay_methods":             payMethods,
-		"min_topup":               operation_setting.MinTopUp,
+		"min_topup":               pricing.MinTopUp,
 		"stripe_min_topup":        stripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
-		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
+		"amount_options":          pricing.AmountOptions,
+		"discount":                pricing.AmountDiscount,
 		"topup_link":              common.TopUpLink,
 		"agent_id":                agentId,
 	}
@@ -302,11 +304,12 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+	id := c.GetInt("id")
+	minTopup := getMinTopupForUser(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
 		return
 	}
-	id := c.GetInt("id")
 	if rejectInvalidTopUpQuota(c, id, req.Amount) {
 		return
 	}
@@ -344,6 +347,9 @@ func RequestEpay(c *gin.Context) {
 	}
 
 	callBackAddress := service.GetCallbackAddress()
+	if gateway.CustomCallbackAddress != "" {
+		callBackAddress = strings.TrimRight(gateway.CustomCallbackAddress, "/")
+	}
 	returnUrl, _ := url.Parse(paymentReturnPath("/usage-logs"))
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
@@ -547,11 +553,12 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 
-	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+	id := c.GetInt("id")
+	minTopup := getMinTopupForUser(id)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
 		return
 	}
-	id := c.GetInt("id")
 	if rejectInvalidTopUpQuota(c, id, req.Amount) {
 		return
 	}

@@ -33,7 +33,6 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
-  getAgentPaymentConfig,
   getAgentSelf,
   listAgentChannels,
   listAgentGroups,
@@ -41,10 +40,10 @@ import {
   listAgentSettlement,
   listAgentUsers,
   replaceAgentChannels,
-  updateAgentPaymentConfig,
   upsertAgentGroup,
   upsertAgentModelPrice,
 } from './api'
+import { AgentPaymentPanel } from './components/agent-payment-panel'
 
 const agentRouteApi = getRouteApi('/_authenticated/agent/')
 
@@ -319,92 +318,6 @@ function AgentUsersPanel(props: { agentId?: number }) {
       {!usersQuery.data?.items?.length ? (
         <div className='text-muted-foreground text-sm'>{t('No users yet')}</div>
       ) : null}
-    </div>
-  )
-}
-
-function AgentPaymentPanel(props: { agentId?: number }) {
-  const { t } = useTranslation()
-  const paymentQuery = useQuery({
-    queryKey: ['agent', 'payment', props.agentId],
-    queryFn: () => getAgentPaymentConfig(props.agentId),
-  })
-  const [payAddress, setPayAddress] = useState('')
-  const [epayId, setEpayId] = useState('')
-  const [epayKey, setEpayKey] = useState('')
-  const [stripeSecret, setStripeSecret] = useState('')
-  const [stripeWebhook, setStripeWebhook] = useState('')
-  const [stripePriceId, setStripePriceId] = useState('')
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      updateAgentPaymentConfig(
-        {
-          epay_enabled: true,
-          pay_address: payAddress || paymentQuery.data?.pay_address,
-          epay_id: epayId || undefined,
-          epay_key: epayKey || undefined,
-          pay_methods: paymentQuery.data?.pay_methods?.length
-            ? paymentQuery.data.pay_methods
-            : [{ name: 'Alipay', type: 'alipay', color: '#1677FF' }],
-          stripe_enabled: Boolean(
-            stripeSecret || paymentQuery.data?.stripe_api_secret_set
-          ),
-          stripe_api_secret: stripeSecret || undefined,
-          stripe_webhook_secret: stripeWebhook || undefined,
-          stripe_price_id:
-            stripePriceId || paymentQuery.data?.stripe_price_id,
-        },
-        props.agentId
-      ),
-    onSuccess: () => {
-      toast.success(t('Payment settings saved'))
-      void paymentQuery.refetch()
-    },
-    onError: (error) => handleServerError(error),
-  })
-
-  return (
-    <div className='grid max-w-xl gap-3'>
-      <Label>{t('Epay address')}</Label>
-      <Input
-        placeholder={paymentQuery.data?.pay_address || ''}
-        value={payAddress}
-        onChange={(e) => setPayAddress(e.target.value)}
-      />
-      <Label>{t('Epay ID')}</Label>
-      <Input
-        placeholder={paymentQuery.data?.epay_id || ''}
-        value={epayId}
-        onChange={(e) => setEpayId(e.target.value)}
-      />
-      <Label>{t('Epay key')}</Label>
-      <Input
-        type='password'
-        value={epayKey}
-        onChange={(e) => setEpayKey(e.target.value)}
-      />
-      <Label>{t('Stripe API secret')}</Label>
-      <Input
-        type='password'
-        value={stripeSecret}
-        onChange={(e) => setStripeSecret(e.target.value)}
-      />
-      <Label>{t('Stripe webhook secret')}</Label>
-      <Input
-        type='password'
-        value={stripeWebhook}
-        onChange={(e) => setStripeWebhook(e.target.value)}
-      />
-      <Label>{t('Stripe price ID')}</Label>
-      <Input
-        placeholder={paymentQuery.data?.stripe_price_id || ''}
-        value={stripePriceId}
-        onChange={(e) => setStripePriceId(e.target.value)}
-      />
-      <Button onClick={() => saveMutation.mutate()}>
-        {t('Save payment settings')}
-      </Button>
     </div>
   )
 }

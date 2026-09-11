@@ -45,15 +45,17 @@ type StripeAdaptor struct {
 }
 
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
-	if req.Amount < getStripeMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup())})
+	id := c.GetInt("id")
+	gateway, _ := resolveStripeGatewayForUser(id)
+	minTopup := getStripeMinTopupForGateway(gateway)
+	if req.Amount < minTopup {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minTopup)})
 		return
 	}
 	if req.Amount > 10000 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值数量不能大于 10000"})
 		return
 	}
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
@@ -62,7 +64,7 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 	if rejectInvalidCreditedQuota(c, id, getStripeCreditedQuota(req.Amount, group)) {
 		return
 	}
-	payMoney := getStripePayMoney(float64(req.Amount), group)
+	payMoney := getStripePayMoneyForUser(id, float64(req.Amount), group, gateway)
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -101,21 +103,12 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前未配置 Stripe 支付"})
 		return
 	}
-	minTopup := getStripeMinTopup()
-	if gateway.AgentId > 0 && gateway.MinTopUp > 0 {
-		minTopup = int64(gateway.MinTopUp)
-	}
+	minTopup := getStripeMinTopupForGateway(gateway)
 	if req.Amount < minTopup {
 		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", minTopup), "data": 10})
 		return
 	}
-	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
-	if gateway.AgentId > 0 {
-		ratio := service.GetAgentTopupRatio(gateway.AgentId, user.Group)
-		if ratio > 0 {
-			chargedMoney = chargedMoney * ratio
-		}
-	}
+	chargedMoney := getStripePayMoneyForUser(id, float64(req.Amount), user.Group, gateway)
 	if rejectInvalidCreditedQuota(c, id,
 		decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 	) {
@@ -430,7 +423,7 @@ func genStripeLinkWithGateway(referenceId string, customerId string, email strin
 			},
 		},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
-		AllowPromotionCodes: stripe.Bool(setting.StripePromotionCodesEnabled),
+		AllowPromotionCodes: stripe.Bool(gateway.PromotionCodesEnabled),
 	}
 
 	if "" == customerId {
@@ -471,28 +464,46 @@ func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
 }
 
 func getStripePayMoney(amount float64, group string) float64 {
+	return getStripePayMoneyForUser(0, amount, group, nil)
+}
+
+func getStripePayMoneyForUser(userId int, amount float64, group string, gateway *resolvedStripeGateway) float64 {
 	originalAmount := amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
-	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
 	topupGroupRatio := common.GetTopupGroupRatio(group)
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
 	}
-	// apply optional preset discount by the original request amount (if configured), default 1.0
+	pricing := resolveAgentTopUpPricing(userId)
 	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
-		if ds > 0 {
-			discount = ds
+	if ds, ok := pricing.AmountDiscount[int(originalAmount)]; ok && ds > 0 {
+		discount = ds
+	}
+	unitPrice := setting.StripeUnitPrice
+	if gateway != nil && gateway.UnitPrice > 0 {
+		unitPrice = gateway.UnitPrice
+	}
+	payMoney := amount * unitPrice * topupGroupRatio * discount
+	if gateway != nil && gateway.AgentId > 0 {
+		ratio := service.GetAgentTopupRatio(gateway.AgentId, group)
+		if ratio > 0 {
+			payMoney *= ratio
 		}
 	}
-	payMoney := amount * setting.StripeUnitPrice * topupGroupRatio * discount
 	return payMoney
 }
 
 func getStripeMinTopup() int64 {
+	return getStripeMinTopupForGateway(nil)
+}
+
+func getStripeMinTopupForGateway(gateway *resolvedStripeGateway) int64 {
 	minTopup := setting.StripeMinTopUp
+	if gateway != nil && gateway.MinTopUp > 0 {
+		minTopup = gateway.MinTopUp
+	}
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		minTopup = minTopup * int(common.QuotaPerUnit)
 	}
