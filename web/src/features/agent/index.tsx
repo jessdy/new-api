@@ -26,7 +26,6 @@ import { CopyButton } from '@/components/copy-button'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { generateAffiliateLink } from '@/features/wallet/lib/affiliate'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
@@ -41,14 +40,23 @@ import {
 import { AgentPaymentPanel } from './components/agent-payment-panel'
 import { AgentPricingPanel } from './components/agent-pricing-panel'
 import { AgentUsersPanel } from './components/agent-users-panel'
+import {
+  AGENT_DEFAULT_SECTION,
+  type AgentSectionId,
+  isAgentSectionId,
+} from './section-registry'
 
-const agentRouteApi = getRouteApi('/_authenticated/agent/')
+const agentRouteApi = getRouteApi('/_authenticated/agent/$section')
 
 export function AgentConsole() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const params = agentRouteApi.useParams()
   const search = agentRouteApi.useSearch()
   const agentId = search.agent_id
+  const section: AgentSectionId = isAgentSectionId(params.section)
+    ? params.section
+    : AGENT_DEFAULT_SECTION
   const user = useAuthStore((s) => s.auth.user)
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const selfQuery = useQuery({
@@ -78,67 +86,58 @@ export function AgentConsole() {
         ) : null}
         {showConsole ? (
           <>
-        <div className='mb-4 space-y-2'>
-          <p className='text-muted-foreground text-sm'>
-            {selfQuery.data
-              ? t(
-                  'Invite code: {{code}} · Debt: {{debt}} / Credit: {{credit}}',
-                  {
-                    code: selfQuery.data.invite_code,
-                    debt: selfQuery.data.settlement_debt,
-                    credit: selfQuery.data.credit_limit,
-                  }
-                )
-              : t(
-                  'Manage channels, pricing, users, and payment for your reseller account.'
-                )}
-          </p>
-          {selfQuery.data?.invite_code ? (
-            <div className='flex flex-wrap items-center gap-2 text-sm'>
-              <span className='text-muted-foreground'>
-                {t('Invite registration link')}
-              </span>
-              <code className='bg-muted max-w-full truncate rounded px-2 py-1'>
-                {generateAffiliateLink(selfQuery.data.invite_code)}
-              </code>
-              <CopyButton
-                value={generateAffiliateLink(selfQuery.data.invite_code)}
-                variant='outline'
-                size='sm'
-                aria-label={t('Copy invite link')}
-              />
+            <div className='mb-4 space-y-2'>
+              <p className='text-muted-foreground text-sm'>
+                {selfQuery.data
+                  ? t(
+                      'Invite code: {{code}} · Debt: {{debt}} / Credit: {{credit}}',
+                      {
+                        code: selfQuery.data.invite_code,
+                        debt: selfQuery.data.settlement_debt,
+                        credit: selfQuery.data.credit_limit,
+                      }
+                    )
+                  : t(
+                      'Manage channels, pricing, users, and payment for your reseller account.'
+                    )}
+              </p>
+              {selfQuery.data?.invite_code ? (
+                <div className='flex flex-wrap items-center gap-2 text-sm'>
+                  <span className='text-muted-foreground'>
+                    {t('Invite registration link')}
+                  </span>
+                  <code className='bg-muted max-w-full truncate rounded px-2 py-1'>
+                    {generateAffiliateLink(selfQuery.data.invite_code)}
+                  </code>
+                  <CopyButton
+                    value={generateAffiliateLink(selfQuery.data.invite_code)}
+                    variant='outline'
+                    size='sm'
+                    aria-label={t('Copy invite link')}
+                  />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-        <Tabs defaultValue='channels'>
-          <TabsList>
-            <TabsTrigger value='channels'>{t('Channels')}</TabsTrigger>
-            <TabsTrigger value='pricing'>{t('Pricing')}</TabsTrigger>
-            <TabsTrigger value='users'>{t('Users')}</TabsTrigger>
-            <TabsTrigger value='payment'>{t('Payment')}</TabsTrigger>
-            <TabsTrigger value='settlement'>{t('Settlement')}</TabsTrigger>
-          </TabsList>
-          <TabsContent value='channels' className='mt-4'>
-            <AgentChannelsPanel
-              agentId={agentId}
-              onSaved={() =>
-                queryClient.invalidateQueries({ queryKey: ['agent'] })
-              }
-            />
-          </TabsContent>
-          <TabsContent value='pricing' className='mt-4'>
-            <AgentPricingPanel agentId={agentId} />
-          </TabsContent>
-          <TabsContent value='users' className='mt-4'>
-            <AgentUsersPanel agentId={agentId} />
-          </TabsContent>
-          <TabsContent value='payment' className='mt-4'>
-            <AgentPaymentPanel agentId={agentId} />
-          </TabsContent>
-          <TabsContent value='settlement' className='mt-4'>
-            <AgentSettlementPanel agentId={agentId} />
-          </TabsContent>
-        </Tabs>
+            {section === 'channels' ? (
+              <AgentChannelsPanel
+                agentId={agentId}
+                onSaved={() =>
+                  queryClient.invalidateQueries({ queryKey: ['agent'] })
+                }
+              />
+            ) : null}
+            {section === 'pricing' ? (
+              <AgentPricingPanel agentId={agentId} />
+            ) : null}
+            {section === 'users' ? (
+              <AgentUsersPanel agentId={agentId} />
+            ) : null}
+            {section === 'payment' ? (
+              <AgentPaymentPanel agentId={agentId} />
+            ) : null}
+            {section === 'settlement' ? (
+              <AgentSettlementPanel agentId={agentId} />
+            ) : null}
           </>
         ) : null}
       </SectionPageLayout.Content>

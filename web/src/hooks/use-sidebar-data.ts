@@ -129,7 +129,15 @@ export function useSidebarData(): SidebarData {
           },
           {
             title: t('Agent Console'),
-            url: '/agent',
+            url: '/agent/channels',
+            activeUrls: [
+              '/agent',
+              '/agent/channels',
+              '/agent/pricing',
+              '/agent/users',
+              '/agent/payment',
+              '/agent/settlement',
+            ],
             icon: BriefcaseBusiness,
             requiredRole: ROLE.AGENT,
             requiredRoleExact: true,

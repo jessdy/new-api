@@ -150,7 +150,11 @@ export function AgentsAdmin() {
                   variant='outline'
                   size='sm'
                   render={
-                    <Link to='/agent' search={{ agent_id: agent.id }} />
+                    <Link
+                      to='/agent/$section'
+                      params={{ section: 'channels' }}
+                      search={{ agent_id: agent.id }}
+                    />
                   }
                 >
                   {t('Manage console')}

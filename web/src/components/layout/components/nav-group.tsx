@@ -120,8 +120,14 @@ function NavBadge({ children }: { children: ReactNode }) {
 /**
  * Sidebar menu link item
  */
+function shouldPreserveAgentSearch(href: string, to: string): boolean {
+  const currentPath = href.split('?')[0]
+  return currentPath.startsWith('/agent') && to.startsWith('/agent')
+}
+
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { isMobile, setOpenMobile } = useSidebar()
+  const preserveSearch = shouldPreserveAgentSearch(href, String(item.url))
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -130,6 +136,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
         render={
           <Link
             to={item.url}
+            search={preserveSearch || undefined}
             preload={isMobile ? false : undefined}
             onClick={() => setOpenMobile(false)}
           />
@@ -192,6 +199,10 @@ function SidebarMenuCollapsible({
                 render={
                   <Link
                     to={subItem.url}
+                    search={
+                      shouldPreserveAgentSearch(href, String(subItem.url)) ||
+                      undefined
+                    }
                     preload={isMobile ? false : undefined}
                     onClick={() => setOpenMobile(false)}
                   />
@@ -248,6 +259,10 @@ function SidebarMenuCollapsedDropdown({
                 render={
                   <Link
                     to={sub.url}
+                    search={
+                      shouldPreserveAgentSearch(href, String(sub.url)) ||
+                      undefined
+                    }
                     className={`${checkIsActive(href, sub) ? 'bg-secondary' : ''}`}
                   />
                 }

@@ -152,7 +152,11 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       )
       setMakeAgentOpen(false)
       triggerRefresh()
-      void navigate({ to: '/agent', search: { agent_id: agent.id } })
+      void navigate({
+        to: '/agent/$section',
+        params: { section: 'channels' },
+        search: { agent_id: agent.id },
+      })
     } catch (error) {
       handleServerError(error, t('Failed to make user an agent'))
     } finally {
@@ -168,7 +172,11 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         toast.error(t('Agent profile not found for this user'))
         return
       }
-      void navigate({ to: '/agent', search: { agent_id: agent.id } })
+      void navigate({
+        to: '/agent/$section',
+        params: { section: 'channels' },
+        search: { agent_id: agent.id },
+      })
     } catch (error) {
       handleServerError(error, t('Failed to open agent console'))
     }

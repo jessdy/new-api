@@ -19,11 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
-import { AGENT_DEFAULT_SECTION } from '@/features/agent/section-registry'
+import { AgentConsole } from '@/features/agent'
+import {
+  AGENT_DEFAULT_SECTION,
+  isAgentSectionId,
+} from '@/features/agent/section-registry'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const agentSearchSchema = z.object({
+  // URL query values arrive as strings; coerce so ?agent_id=1 is kept.
   agent_id: z.preprocess((value) => {
     if (value == null || value === '') return undefined
     const n = typeof value === 'number' ? value : Number(value)
@@ -31,9 +36,10 @@ const agentSearchSchema = z.object({
   }, z.number().int().positive().optional()),
 })
 
-export const Route = createFileRoute('/_authenticated/agent/')({
-  beforeLoad: ({ search }) => {
+export const Route = createFileRoute('/_authenticated/agent/$section')({
+  beforeLoad: ({ params, search }) => {
     const { auth } = useAuthStore.getState()
+    // Agents (role=5) use their own console; admins/root may manage via ?agent_id=
     if (!auth.user) {
       throw redirect({ to: '/403' })
     }
@@ -43,11 +49,14 @@ export const Route = createFileRoute('/_authenticated/agent/')({
     if (!isAgent && !isAdmin) {
       throw redirect({ to: '/403' })
     }
-    throw redirect({
-      to: '/agent/$section',
-      params: { section: AGENT_DEFAULT_SECTION },
-      search,
-    })
+    if (!isAgentSectionId(params.section)) {
+      throw redirect({
+        to: '/agent/$section',
+        params: { section: AGENT_DEFAULT_SECTION },
+        search,
+      })
+    }
   },
   validateSearch: agentSearchSchema,
+  component: AgentConsole,
 })
