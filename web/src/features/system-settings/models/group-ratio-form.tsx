@@ -64,7 +64,7 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 
-type GroupFormValues = {
+export type GroupFormValues = {
   GroupRatio: string
   TopupGroupRatio: string
   UserUsableGroups: string
@@ -79,12 +79,14 @@ type GroupRatioFormProps = {
   form: UseFormReturn<GroupFormValues>
   onSave: (values: GroupFormValues) => Promise<void>
   isSaving: boolean
+  showLocalSaveButton?: boolean
 }
 
 export const GroupRatioForm = memo(function GroupRatioForm({
   form,
   onSave,
   isSaving,
+  showLocalSaveButton = false,
 }: GroupRatioFormProps) {
   const { t } = useTranslation()
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
@@ -154,16 +156,29 @@ export const GroupRatioForm = memo(function GroupRatioForm({
       <GroupPricingGuide open={guideOpen} onOpenChange={setGuideOpen} />
 
       <Form {...form}>
-        <SettingsPageActionsPortal>
-          <Button
-            type='button'
-            size='sm'
-            onClick={form.handleSubmit(onSave)}
-            disabled={isSaving}
-          >
-            {isSaving ? t('Saving...') : t('Save group ratios')}
-          </Button>
-        </SettingsPageActionsPortal>
+        {showLocalSaveButton ? (
+          <div className='flex justify-end'>
+            <Button
+              type='button'
+              size='sm'
+              onClick={form.handleSubmit(onSave)}
+              disabled={isSaving}
+            >
+              {isSaving ? t('Saving...') : t('Save group ratios')}
+            </Button>
+          </div>
+        ) : (
+          <SettingsPageActionsPortal>
+            <Button
+              type='button'
+              size='sm'
+              onClick={form.handleSubmit(onSave)}
+              disabled={isSaving}
+            >
+              {isSaving ? t('Saving...') : t('Save group ratios')}
+            </Button>
+          </SettingsPageActionsPortal>
+        )}
         {editMode === 'visual' ? (
           <div className='space-y-6'>
             <GroupRatioVisualEditor

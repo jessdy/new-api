@@ -2,15 +2,16 @@ package service
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -63,6 +64,10 @@ func GetAgentGroupRatio(agentId int, groupName string) (float64, bool) {
 	return group.Ratio, true
 }
 
+func GetAgentGroupGroupRatio(agentId int, userGroup, usingGroup string) (float64, bool) {
+	return model.GetAgentGroupGroupRatio(agentId, userGroup, usingGroup)
+}
+
 func GetAgentTopupRatio(agentId int, groupName string) float64 {
 	if agentId <= 0 {
 		return 1
@@ -95,12 +100,117 @@ func ListAgentUsableGroups(agentId int) map[string]string {
 		return result
 	}
 	for _, group := range groups {
-		if group == nil || !group.Enabled {
+		if group == nil || !group.Enabled || !group.Selectable {
 			continue
 		}
-		result[group.Name] = fmt.Sprintf("Agent group %s", group.Name)
+		desc := group.Description
+		if desc == "" {
+			desc = group.Name
+		}
+		result[group.Name] = desc
 	}
 	return result
+}
+
+func ApplyAgentSpecialUsableGroups(agentId int, userGroup string, base map[string]string) map[string]string {
+	if agentId <= 0 || base == nil {
+		return base
+	}
+	agent, err := model.GetAgentById(agentId)
+	if err != nil {
+		return base
+	}
+	settings, err := agent.GetPricingSettings()
+	if err != nil {
+		return base
+	}
+	specialSettings, ok := settings.GroupSpecialUsableGroup[userGroup]
+	if !ok || specialSettings == nil {
+		if userGroup != "" {
+			if _, exists := base[userGroup]; !exists {
+				base[userGroup] = userGroup
+			}
+		}
+		return base
+	}
+	for specialGroup, desc := range specialSettings {
+		if after, cut := strings.CutPrefix(specialGroup, "-:"); cut {
+			delete(base, after)
+			continue
+		}
+		if after, cut := strings.CutPrefix(specialGroup, "+:"); cut {
+			base[after] = desc
+			continue
+		}
+		base[specialGroup] = desc
+	}
+	if userGroup != "" {
+		if _, exists := base[userGroup]; !exists {
+			base[userGroup] = userGroup
+		}
+	}
+	return base
+}
+
+func GetAgentAutoGroups(agentId int, userGroup string) []string {
+	if agentId <= 0 {
+		return nil
+	}
+	agent, err := model.GetAgentById(agentId)
+	if err != nil {
+		return nil
+	}
+	settings, err := agent.GetPricingSettings()
+	if err != nil {
+		return nil
+	}
+	usable := ApplyAgentSpecialUsableGroups(agentId, userGroup, ListAgentUsableGroups(agentId))
+	result := make([]string, 0, len(settings.AutoGroups))
+	seen := map[string]struct{}{}
+	for _, name := range settings.AutoGroups {
+		if _, ok := usable[name]; !ok {
+			continue
+		}
+		if !AgentOwnsGroup(agentId, name) {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	return result
+}
+
+func GetAgentMaxTokenAutoGroups(agentId int) int {
+	if agentId <= 0 {
+		return setting.GetMaxTokenAutoGroups()
+	}
+	agent, err := model.GetAgentById(agentId)
+	if err != nil {
+		return setting.GetMaxTokenAutoGroups()
+	}
+	settings, err := agent.GetPricingSettings()
+	if err != nil || settings.MaxTokenAutoGroups <= 0 {
+		return setting.GetMaxTokenAutoGroups()
+	}
+	return settings.MaxTokenAutoGroups
+}
+
+func AgentDefaultUseAutoGroup(agentId int) bool {
+	if agentId <= 0 {
+		return setting.DefaultUseAutoGroup
+	}
+	agent, err := model.GetAgentById(agentId)
+	if err != nil {
+		return setting.DefaultUseAutoGroup
+	}
+	settings, err := agent.GetPricingSettings()
+	if err != nil {
+		return setting.DefaultUseAutoGroup
+	}
+	return settings.DefaultUseAutoGroup
 }
 
 func ApplyAgentPricing(agentId int, modelName string, groupRatio float64) (effectiveRatio float64, discount float64) {

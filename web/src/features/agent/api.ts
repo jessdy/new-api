@@ -54,8 +54,21 @@ export type AgentGroup = {
   name: string
   ratio: number
   topup_ratio: number
+  description?: string
+  selectable?: boolean
   enabled: boolean
   is_default: boolean
+}
+
+export type AgentGroupPricingView = {
+  group_ratio: Record<string, number>
+  topup_group_ratio: Record<string, number>
+  user_usable_groups: Record<string, string>
+  group_group_ratio: Record<string, Record<string, number>>
+  auto_groups: string[]
+  max_token_auto_groups: number
+  default_use_auto_group: boolean
+  group_special_usable_group: Record<string, Record<string, string>>
 }
 
 export type AgentModelPrice = {
@@ -123,20 +136,34 @@ export async function replaceAgentChannels(
   requireServerSuccess(res.data, 'Failed to save channels')
 }
 
-export async function listAgentGroups(agentId?: number): Promise<AgentGroup[]> {
+export async function listAgentGroups(
+  agentId?: number
+): Promise<AgentGroupPricingView> {
   const res = await api.get('/api/agent/groups', { params: agentParams(agentId) })
   requireServerSuccess(res.data, 'Failed to load groups')
-  return res.data.data ?? []
+  return (
+    res.data.data ?? {
+      group_ratio: {},
+      topup_group_ratio: {},
+      user_usable_groups: {},
+      group_group_ratio: {},
+      auto_groups: [],
+      max_token_auto_groups: 0,
+      default_use_auto_group: false,
+      group_special_usable_group: {},
+    }
+  )
 }
 
 export async function upsertAgentGroup(
-  group: AgentGroup,
+  pricing: AgentGroupPricingView,
   agentId?: number
-): Promise<void> {
-  const res = await api.put('/api/agent/groups', group, {
+): Promise<AgentGroupPricingView> {
+  const res = await api.put('/api/agent/groups', pricing, {
     params: agentParams(agentId),
   })
   requireServerSuccess(res.data, 'Failed to save group')
+  return res.data.data
 }
 
 export async function listAgentModelPrices(

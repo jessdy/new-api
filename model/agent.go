@@ -32,6 +32,7 @@ type Agent struct {
 	CreditLimit    int64  `json:"credit_limit" gorm:"type:bigint;not null;default:0"`
 	SettlementDebt int64  `json:"settlement_debt" gorm:"type:bigint;not null;default:0"`
 	PaymentConfig  string `json:"-" gorm:"type:text;column:payment_config"` // encrypted JSON
+	PricingConfig  string `json:"-" gorm:"type:text;column:pricing_config"` // agent group pricing extras
 	CreatedAt      int64  `json:"created_at" gorm:"bigint;autoCreateTime"`
 	UpdatedAt      int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
@@ -43,15 +44,17 @@ type AgentChannel struct {
 }
 
 type AgentGroup struct {
-	Id         int     `json:"id"`
-	AgentId    int     `json:"agent_id" gorm:"uniqueIndex:uk_agent_group_name;index;not null"`
-	Name       string  `json:"name" gorm:"type:varchar(64);uniqueIndex:uk_agent_group_name;not null"`
-	Ratio      float64 `json:"ratio" gorm:"type:decimal(16,8);not null;default:1"`
-	TopupRatio float64 `json:"topup_ratio" gorm:"type:decimal(16,8);not null;default:1"`
-	Enabled    bool    `json:"enabled"`
-	IsDefault  bool    `json:"is_default"`
-	CreatedAt  int64   `json:"created_at" gorm:"bigint;autoCreateTime"`
-	UpdatedAt  int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+	Id          int     `json:"id"`
+	AgentId     int     `json:"agent_id" gorm:"uniqueIndex:uk_agent_group_name;index;not null"`
+	Name        string  `json:"name" gorm:"type:varchar(64);uniqueIndex:uk_agent_group_name;not null"`
+	Ratio       float64 `json:"ratio" gorm:"type:decimal(16,8);not null;default:1"`
+	TopupRatio  float64 `json:"topup_ratio" gorm:"type:decimal(16,8);not null;default:1"`
+	Description string  `json:"description" gorm:"type:varchar(255);default:''"`
+	Selectable  bool    `json:"selectable"`
+	Enabled     bool    `json:"enabled"`
+	IsDefault   bool    `json:"is_default"`
+	CreatedAt   int64   `json:"created_at" gorm:"bigint;autoCreateTime"`
+	UpdatedAt   int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
 type AgentModelPrice struct {
@@ -254,7 +257,7 @@ func UpsertAgentGroup(group *AgentGroup) error {
 	return DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "agent_id"}, {Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"ratio", "topup_ratio", "enabled", "is_default", "updated_at",
+			"ratio", "topup_ratio", "description", "selectable", "enabled", "is_default", "updated_at",
 		}),
 	}).Create(group).Error
 }
@@ -403,12 +406,14 @@ func EnsureAgentDefaultGroup(agentId int) error {
 		return err
 	}
 	return UpsertAgentGroup(&AgentGroup{
-		AgentId:    agentId,
-		Name:       "default",
-		Ratio:      1,
-		TopupRatio: 1,
-		Enabled:    true,
-		IsDefault:  true,
+		AgentId:     agentId,
+		Name:        "default",
+		Ratio:       1,
+		TopupRatio:  1,
+		Description: "Default",
+		Selectable:  true,
+		Enabled:     true,
+		IsDefault:   true,
 	})
 }
 

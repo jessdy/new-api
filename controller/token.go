@@ -96,7 +96,11 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 		return true
 	}
 
+	user, userErr := model.GetUserById(c.GetInt("id"), false)
 	maxCount := setting.GetMaxTokenAutoGroups()
+	if userErr == nil && user != nil {
+		maxCount = service.GetAgentMaxTokenAutoGroups(user.AgentId)
+	}
 	if len(groups) > maxCount {
 		common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsTooMany, map[string]any{"Max": maxCount})
 		return false
@@ -114,7 +118,11 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 			return false
 		}
 		seen[group] = struct{}{}
-		if !service.IsUserSelectableGroup(userGroup, group) {
+		selectable := service.IsUserSelectableGroup(userGroup, group)
+		if userErr == nil && user != nil {
+			selectable = service.IsUserSelectableGroupForUser(user, group)
+		}
+		if !selectable {
 			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupsInvalid, map[string]any{"Group": group})
 			return false
 		}
@@ -174,14 +182,22 @@ func GetToken(c *gin.Context) {
 }
 
 func GetTokenAutoGroups(c *gin.Context) {
-	userGroup, err := getTokenRequestUserGroup(c)
-	if err != nil {
-		common.ApiError(c, err)
+	user, err := model.GetUserById(c.GetInt("id"), false)
+	if err != nil || user == nil {
+		userGroup, groupErr := getTokenRequestUserGroup(c)
+		if groupErr != nil {
+			common.ApiError(c, groupErr)
+			return
+		}
+		common.ApiSuccess(c, gin.H{
+			"groups":    service.GetUserAutoGroup(userGroup),
+			"max_count": setting.GetMaxTokenAutoGroups(),
+		})
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"groups":    service.GetUserAutoGroup(userGroup),
-		"max_count": setting.GetMaxTokenAutoGroups(),
+		"groups":    service.GetUserAutoGroupForUser(user),
+		"max_count": service.GetAgentMaxTokenAutoGroups(user.AgentId),
 	})
 }
 

@@ -96,12 +96,12 @@ func AgentListGroups(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
 		return
 	}
-	groups, err := model.ListAgentGroups(agent.Id)
+	view, err := model.GetAgentGroupPricingView(agent.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": groups})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": view})
 }
 
 func AgentUpsertGroup(c *gin.Context) {
@@ -110,17 +110,21 @@ func AgentUpsertGroup(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
 		return
 	}
-	var group model.AgentGroup
-	if err := c.ShouldBindJSON(&group); err != nil {
+	var view model.AgentGroupPricingView
+	if err := common.DecodeJson(c.Request.Body, &view); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	group.AgentId = agent.Id
-	if err := model.UpsertAgentGroup(&group); err != nil {
+	if err := model.ReplaceAgentGroupPricing(agent.Id, view); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": group})
+	saved, err := model.GetAgentGroupPricingView(agent.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": saved})
 }
 
 func AgentDeleteGroup(c *gin.Context) {

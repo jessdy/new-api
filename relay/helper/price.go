@@ -71,10 +71,16 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 	}
 
 	if agentId > 0 {
-		if ratio, ok := service.GetAgentGroupRatio(agentId, relayInfo.UsingGroup); ok {
+		userGroup := ""
+		if relayInfo != nil {
+			userGroup = relayInfo.UserGroup
+		}
+		if ratio, ok := service.GetAgentGroupGroupRatio(agentId, userGroup, relayInfo.UsingGroup); ok {
 			groupRatioInfo.GroupRatio = ratio
 			groupRatioInfo.HasSpecialRatio = true
 			groupRatioInfo.GroupSpecialRatio = ratio
+		} else if ratio, ok := service.GetAgentGroupRatio(agentId, relayInfo.UsingGroup); ok {
+			groupRatioInfo.GroupRatio = ratio
 		} else {
 			groupRatioInfo.GroupRatio = 1
 		}

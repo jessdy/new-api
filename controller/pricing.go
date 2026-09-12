@@ -41,27 +41,49 @@ func GetPricing(c *gin.Context) {
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
 	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
-	var group string
+	var user *model.UserBase
 	if exists {
-		user, err := model.GetUserCache(userId.(int))
+		cached, err := model.GetUserCache(userId.(int))
 		if err == nil {
-			group = user.Group
-			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
+			user = cached
+			if cached.AgentId > 0 {
+				view, viewErr := model.GetAgentGroupPricingView(cached.AgentId)
+				if viewErr == nil {
+					groupRatio = maps.Clone(view.GroupRatio)
+					for g := range groupRatio {
+						if ratio, ok := service.GetAgentGroupGroupRatio(cached.AgentId, cached.Group, g); ok {
+							groupRatio[g] = ratio
+						}
+					}
+				}
+			} else {
+				for g := range groupRatio {
+					ratio, ok := ratio_setting.GetGroupGroupRatio(cached.Group, g)
+					if ok {
+						groupRatio[g] = ratio
+					}
 				}
 			}
 		}
 	}
 
-	usableGroup = service.GetUserUsableGroups(group)
-	pricing = filterPricingByUsableGroups(pricing, usableGroup)
-	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
-		if _, ok := usableGroup[group]; !ok {
-			delete(groupRatio, group)
+	if user != nil {
+		usableGroup = service.GetUserUsableGroupsForUser(&model.User{AgentId: user.AgentId, Group: user.Group})
+	} else {
+		usableGroup = service.GetUserUsableGroups("")
+	}
+	if user == nil || user.AgentId <= 0 {
+		pricing = filterPricingByUsableGroups(pricing, usableGroup)
+		for name := range groupRatio {
+			if _, ok := usableGroup[name]; !ok {
+				delete(groupRatio, name)
+			}
 		}
+	}
+
+	autoGroups := []string{}
+	if user != nil {
+		autoGroups = service.GetUserAutoGroupForUser(&model.User{AgentId: user.AgentId, Group: user.Group})
 	}
 
 	c.JSON(200, gin.H{
@@ -71,7 +93,7 @@ func GetPricing(c *gin.Context) {
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
+		"auto_groups":        autoGroups,
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }

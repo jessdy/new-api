@@ -35,15 +35,12 @@ import { useAuthStore } from '@/stores/auth-store'
 import {
   getAgentSelf,
   listAgentChannels,
-  listAgentGroups,
-  listAgentModelPrices,
   listAgentSettlement,
   listAgentUsers,
   replaceAgentChannels,
-  upsertAgentGroup,
-  upsertAgentModelPrice,
 } from './api'
 import { AgentPaymentPanel } from './components/agent-payment-panel'
+import { AgentPricingPanel } from './components/agent-pricing-panel'
 
 const agentRouteApi = getRouteApi('/_authenticated/agent/')
 
@@ -192,110 +189,6 @@ function AgentChannelsPanel(props: {
             </label>
           )
         })}
-      </div>
-    </div>
-  )
-}
-
-function AgentPricingPanel(props: { agentId?: number }) {
-  const { t } = useTranslation()
-  const groupsQuery = useQuery({
-    queryKey: ['agent', 'groups', props.agentId],
-    queryFn: () => listAgentGroups(props.agentId),
-  })
-  const pricesQuery = useQuery({
-    queryKey: ['agent', 'model-prices', props.agentId],
-    queryFn: () => listAgentModelPrices(props.agentId),
-  })
-  const [groupName, setGroupName] = useState('default')
-  const [groupRatio, setGroupRatio] = useState('1')
-  const [modelName, setModelName] = useState('')
-  const [discount, setDiscount] = useState('1')
-
-  const saveGroup = useMutation({
-    mutationFn: () =>
-      upsertAgentGroup(
-        {
-          name: groupName,
-          ratio: Number(groupRatio),
-          topup_ratio: 1,
-          enabled: true,
-          is_default: groupName === 'default',
-        },
-        props.agentId
-      ),
-    onSuccess: () => {
-      toast.success(t('Group saved'))
-      void groupsQuery.refetch()
-    },
-    onError: (error) => handleServerError(error),
-  })
-
-  const savePrice = useMutation({
-    mutationFn: () =>
-      upsertAgentModelPrice(
-        {
-          model: modelName,
-          discount_ratio: Number(discount),
-        },
-        props.agentId
-      ),
-    onSuccess: () => {
-      toast.success(t('Model discount saved'))
-      void pricesQuery.refetch()
-    },
-    onError: (error) => handleServerError(error),
-  })
-
-  return (
-    <div className='grid gap-8 lg:grid-cols-2'>
-      <div className='space-y-3'>
-        <h3 className='font-medium'>{t('Group pricing')}</h3>
-        <div className='grid gap-2'>
-          <Label>{t('Group name')}</Label>
-          <Input
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-          />
-          <Label>{t('Ratio')}</Label>
-          <Input
-            value={groupRatio}
-            onChange={(e) => setGroupRatio(e.target.value)}
-          />
-          <Button onClick={() => saveGroup.mutate()}>{t('Save group')}</Button>
-        </div>
-        <ul className='text-muted-foreground space-y-1 text-sm'>
-          {(groupsQuery.data ?? []).map((group) => (
-            <li key={group.name}>
-              {group.name}: {group.ratio}
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className='space-y-3'>
-        <h3 className='font-medium'>{t('Model discount')}</h3>
-        <div className='grid gap-2'>
-          <Label>{t('Model')}</Label>
-          <Input
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-          />
-          <Label>{t('Discount ratio')}</Label>
-          <Input
-            value={discount}
-            onChange={(e) => setDiscount(e.target.value)}
-          />
-          <Button onClick={() => savePrice.mutate()}>
-            {t('Save discount')}
-          </Button>
-        </div>
-        <ul className='text-muted-foreground space-y-1 text-sm'>
-          {(pricesQuery.data ?? []).map((price) => (
-            <li key={price.model}>
-              {price.model}: {price.discount_ratio}
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   )

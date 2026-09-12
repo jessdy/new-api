@@ -477,9 +477,9 @@ func TokenAuth() func(c *gin.Context) {
 		tokenGroup := token.Group
 		if tokenGroup != "" {
 			if agentId > 0 {
-				if !service.AgentOwnsGroup(agentId, tokenGroup) && tokenGroup != "auto" {
-					usable := service.ListAgentUsableGroups(agentId)
-					if _, ok := usable[tokenGroup]; !ok {
+				if tokenGroup != "auto" {
+					usable := service.GetUserUsableGroupsForUser(&model.User{AgentId: agentId, Group: userGroup})
+					if _, ok := usable[tokenGroup]; !ok && !service.AgentOwnsGroup(agentId, tokenGroup) {
 						abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 						return
 					}

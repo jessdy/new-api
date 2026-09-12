@@ -132,3 +132,56 @@ func TestAgentPaymentConfigRoundTrip(t *testing.T) {
 	assert.Equal(t, true, view["epay_key_set"])
 	assert.NotContains(t, view, "epay_key")
 }
+
+func TestReplaceAgentGroupPricingBecomesUserPricing(t *testing.T) {
+	newAgentTestDB(t)
+	agent := &Agent{
+		UserId:     41,
+		Name:       "price-agent",
+		InviteCode: "pricecode",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+
+	require.NoError(t, ReplaceAgentGroupPricing(agent.Id, AgentGroupPricingView{
+		GroupRatio: map[string]float64{
+			"default": 1,
+			"vip":     0.5,
+		},
+		TopupGroupRatio: map[string]float64{
+			"default": 1,
+			"vip":     1.2,
+		},
+		UserUsableGroups: map[string]string{
+			"default": "Default",
+			"vip":     "VIP",
+		},
+		GroupGroupRatio: map[string]map[string]float64{
+			"vip": {"default": 0.8},
+		},
+		AutoGroups:          []string{"vip", "default"},
+		MaxTokenAutoGroups:  2,
+		DefaultUseAutoGroup: true,
+		GroupSpecialUsableGroup: map[string]map[string]string{
+			"vip": {"+:hidden": "Hidden"},
+		},
+	}))
+
+	view, err := GetAgentGroupPricingView(agent.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 0.5, view.GroupRatio["vip"])
+	assert.Equal(t, 1.2, view.TopupGroupRatio["vip"])
+	assert.Equal(t, "VIP", view.UserUsableGroups["vip"])
+	assert.Equal(t, 0.8, view.GroupGroupRatio["vip"]["default"])
+	assert.Equal(t, []string{"vip", "default"}, view.AutoGroups)
+	assert.True(t, view.DefaultUseAutoGroup)
+
+	ratio, ok := GetAgentGroupGroupRatio(agent.Id, "vip", "default")
+	require.True(t, ok)
+	assert.Equal(t, 0.8, ratio)
+
+	vip, err := GetAgentGroup(agent.Id, "vip")
+	require.NoError(t, err)
+	assert.True(t, vip.Selectable)
+	assert.Equal(t, "VIP", vip.Description)
+}

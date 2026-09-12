@@ -333,7 +333,11 @@ func Register(c *gin.Context) {
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 		}
-		if setting.DefaultUseAutoGroup {
+		useAuto := setting.DefaultUseAutoGroup
+		if insertedUser.AgentId > 0 {
+			useAuto = service.AgentDefaultUseAutoGroup(insertedUser.AgentId)
+		}
+		if useAuto {
 			token.Group = "auto"
 		}
 		if err := token.Insert(); err != nil {
@@ -637,7 +641,8 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+	userModel := &model.User{AgentId: user.AgentId, Group: user.Group}
+	groups := service.GetUserUsableGroupsForUser(userModel)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
@@ -647,7 +652,7 @@ func GetUserModels(c *gin.Context) {
 		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
-			groupsToQuery = service.GetUserAutoGroup(user.Group)
+			groupsToQuery = service.GetUserAutoGroupForUser(userModel)
 		}
 	default:
 		if _, ok := groups[group]; ok {

@@ -44,10 +44,8 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 // groups when the user belongs to an agent.
 func GetUserUsableGroupsForUser(user *model.User) map[string]string {
 	if user != nil && user.AgentId > 0 {
-		agentGroups := ListAgentUsableGroups(user.AgentId)
-		if len(agentGroups) > 0 {
-			return agentGroups
-		}
+		base := ListAgentUsableGroups(user.AgentId)
+		return ApplyAgentSpecialUsableGroups(user.AgentId, user.Group, base)
 	}
 	group := ""
 	if user != nil {
@@ -68,6 +66,22 @@ func IsUserSelectableGroup(userGroup, groupName string) bool {
 	return GroupInUserUsableGroups(userGroup, groupName) && ratio_setting.ContainsGroupRatio(groupName)
 }
 
+func IsUserSelectableGroupForUser(user *model.User, groupName string) bool {
+	if groupName == "" || groupName == "auto" {
+		return false
+	}
+	if user != nil && user.AgentId > 0 {
+		usable := GetUserUsableGroupsForUser(user)
+		_, ok := usable[groupName]
+		return ok && AgentOwnsGroup(user.AgentId, groupName)
+	}
+	userGroup := ""
+	if user != nil {
+		userGroup = user.Group
+	}
+	return IsUserSelectableGroup(userGroup, groupName)
+}
+
 // GetUserAutoGroup 根据用户分组获取自动分组设置
 func GetUserAutoGroup(userGroup string) []string {
 	autoGroups := make([]string, 0)
@@ -83,6 +97,17 @@ func GetUserAutoGroup(userGroup string) []string {
 		autoGroups = append(autoGroups, group)
 	}
 	return autoGroups
+}
+
+func GetUserAutoGroupForUser(user *model.User) []string {
+	if user != nil && user.AgentId > 0 {
+		return GetAgentAutoGroups(user.AgentId, user.Group)
+	}
+	userGroup := ""
+	if user != nil {
+		userGroup = user.Group
+	}
+	return GetUserAutoGroup(userGroup)
 }
 
 // FilterUserTokenAutoGroups applies current permissions before the current
@@ -107,10 +132,54 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 	return filtered
 }
 
+func FilterUserTokenAutoGroupsForUser(user *model.User, groups []string) []string {
+	if user != nil && user.AgentId > 0 {
+		maxCount := GetAgentMaxTokenAutoGroups(user.AgentId)
+		usable := GetUserUsableGroupsForUser(user)
+		filtered := make([]string, 0, min(len(groups), maxCount))
+		seen := make(map[string]struct{})
+		for _, group := range groups {
+			if _, ok := usable[group]; !ok {
+				continue
+			}
+			if !AgentOwnsGroup(user.AgentId, group) {
+				continue
+			}
+			if _, ok := seen[group]; ok {
+				continue
+			}
+			seen[group] = struct{}{}
+			filtered = append(filtered, group)
+			if len(filtered) == maxCount {
+				break
+			}
+		}
+		return filtered
+	}
+	userGroup := ""
+	if user != nil {
+		userGroup = user.Group
+	}
+	return FilterUserTokenAutoGroups(userGroup, groups)
+}
+
 // GetRequestAutoGroups resolves the ordered Auto groups for the current token.
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
 func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
+	userId := c.GetInt("id")
+	user, err := model.GetUserById(userId, false)
+	if err == nil && user != nil {
+		value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
+		if !ok {
+			return GetUserAutoGroupForUser(user)
+		}
+		groups, ok := value.([]string)
+		if !ok {
+			return []string{}
+		}
+		return FilterUserTokenAutoGroupsForUser(user, groups)
+	}
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
 		return GetUserAutoGroup(userGroup)
@@ -150,8 +219,14 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 
 // GetUserGroupRatioForAgent returns agent-scoped group ratio when available.
 func GetUserGroupRatioForAgent(agentId int, userGroup, group string) float64 {
-	if ratio, ok := GetAgentGroupRatio(agentId, group); ok {
-		return ratio
+	if agentId > 0 {
+		if ratio, ok := GetAgentGroupGroupRatio(agentId, userGroup, group); ok {
+			return ratio
+		}
+		if ratio, ok := GetAgentGroupRatio(agentId, group); ok {
+			return ratio
+		}
+		return 1
 	}
 	return GetUserGroupRatio(userGroup, group)
 }
