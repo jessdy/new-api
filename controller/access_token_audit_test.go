@@ -496,18 +496,23 @@ func newAuditTestDatabase(t *testing.T, kind, dsn string) (*gorm.DB, string) {
 
 func verifyAuditRoleStorage(t *testing.T) {
 	t.Helper()
-	for i, role := range []int{1, 10, 100, 0, 99} {
+	for i, role := range []int{1, 5, 10, 100, 0, 99} {
 		model.RecordAuditLog(nil, model.AuditLog{ActorRole: role, UserId: 1, Username: "role-owner", CreatedAt: int64(200 + i), Category: model.AuditCategoryOperation, RequestId: fmt.Sprintf("matrix-role-%d", role)})
 	}
 	filter := model.AuditLogFilter{Category: model.AuditCategoryOperation}
 	visible, total, err := model.GetAuditLogs(filter, 0, 1, common.RoleAdminUser)
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, total)
+	assert.EqualValues(t, 3, total)
 	require.Len(t, visible, 1)
 	assert.Equal(t, common.RoleAdminUser, visible[0].ActorRole)
 	visible, total, err = model.GetAuditLogs(filter, 1, 1, common.RoleCommonUser)
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, total)
+	assert.EqualValues(t, 3, total)
+	require.Len(t, visible, 1)
+	assert.Equal(t, common.RoleAgentUser, visible[0].ActorRole)
+	visible, total, err = model.GetAuditLogs(filter, 2, 1, common.RoleAgentUser)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, total)
 	require.Len(t, visible, 1)
 	assert.Equal(t, common.RoleCommonUser, visible[0].ActorRole)
 	filter.RequestId = "matrix-role-100"

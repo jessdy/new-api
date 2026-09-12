@@ -675,9 +675,20 @@ func TestAgentAdjustUserQuotaRecordsTopupAndAudit(t *testing.T) {
 	require.Len(t, audits, 1)
 	assert.True(t, audits[0].Success)
 	assert.Equal(t, agentOwner.Id, audits[0].UserId)
+	assert.Equal(t, common.RoleAgentUser, audits[0].ActorRole)
 	assert.Equal(t, "user.quota_add", audits[0].Action)
 	params, err := common.Marshal(audits[0].Other.Op.Params)
 	require.NoError(t, err)
 	assert.Contains(t, string(params), `"agent_id":`+strconv.Itoa(agent.Id))
 	assert.Contains(t, string(params), `"target_user_id":`+strconv.Itoa(member.Id))
+
+	selfLogs, selfTotal, err := model.GetAuditLogs(model.AuditLogFilter{
+		UserId:   agentOwner.Id,
+		SelfView: true,
+	}, 0, 20, common.RoleAgentUser)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, selfTotal)
+	require.Len(t, selfLogs, 1)
+	assert.Equal(t, "user.quota_add", selfLogs[0].Action)
+	assert.Equal(t, common.RoleAgentUser, selfLogs[0].ActorRole)
 }
