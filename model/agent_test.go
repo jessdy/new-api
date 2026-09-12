@@ -77,13 +77,179 @@ func TestAgentInviteBinding(t *testing.T) {
 	agent := &Agent{
 		UserId:     21,
 		Name:       "reseller-b",
-		InviteCode: "bindme",
+		InviteCode: "BindMe",
 		Status:     AgentStatusEnabled,
 	}
 	require.NoError(t, CreateAgent(agent))
-	found, err := GetAgentByInviteCode("bindme")
+	found, err := GetAgentByInviteCode("BINDME")
 	require.NoError(t, err)
 	assert.Equal(t, agent.Id, found.Id)
+	assert.Equal(t, "bindme", found.InviteCode)
+
+	binding := ResolveRegistrationInvite("BindMe")
+	assert.Equal(t, agent.Id, binding.AgentId)
+
+	invited := User{
+		Username: "invited-user",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "inv1",
+		AgentId:  agent.Id,
+	}
+	require.NoError(t, DB.Create(&invited).Error)
+	viaAff := User{
+		Username:  "via-aff",
+		Password:  "placeholder",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		Group:     "default",
+		AffCode:   "inv2",
+		InviterId: agent.UserId,
+	}
+	require.NoError(t, DB.Create(&viaAff).Error)
+
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, users, 2)
+	ids := []int{users[0].Id, users[1].Id}
+	assert.ElementsMatch(t, []int{invited.Id, viaAff.Id}, ids)
+}
+
+func TestAgentSalesInviteInheritsAgent(t *testing.T) {
+	newAgentTestDB(t)
+	agentUser := User{
+		Username: "agent-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "ownr",
+	}
+	require.NoError(t, DB.Create(&agentUser).Error)
+	agent := &Agent{
+		UserId:     agentUser.Id,
+		Name:       "reseller-sales",
+		InviteCode: "salesorg",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+
+	sales := User{
+		Username:        "sales-bob",
+		Password:        "placeholder",
+		Role:            common.RoleCommonUser,
+		Status:          common.UserStatusEnabled,
+		Group:           "default",
+		AffCode:         "bob1",
+		AgentId:         agent.Id,
+		AgentMemberRole: AgentMemberRoleSales,
+	}
+	require.NoError(t, DB.Create(&sales).Error)
+
+	binding := ResolveRegistrationInvite("bob1")
+	assert.Equal(t, sales.Id, binding.InviterId)
+	assert.Equal(t, agent.Id, binding.AgentId)
+
+	customer := User{
+		Username:  "end-user-cara",
+		Password:  "placeholder",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		Group:     "default",
+		AffCode:   "cara",
+		InviterId: sales.Id,
+	}
+	require.NoError(t, DB.Create(&customer).Error)
+
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	ids := []int{users[0].Id, users[1].Id}
+	assert.ElementsMatch(t, []int{sales.Id, customer.Id}, ids)
+	byID := map[int]AgentManagedUser{users[0].Id: users[0], users[1].Id: users[1]}
+	assert.Equal(t, AgentMemberRoleSales, byID[sales.Id].AgentMemberRole)
+	assert.Equal(t, AgentMemberRoleUser, byID[customer.Id].AgentMemberRole)
+	assert.Equal(t, sales.Username, byID[customer.Id].InviterUsername)
+	reloaded, err := GetUserById(customer.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, agent.Id, reloaded.AgentId)
+}
+
+func assertAgentMemberRoleColumn(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.AutoMigrate(&User{}))
+	require.True(t, db.Migrator().HasColumn(&User{}, "AgentMemberRole"))
+	require.NoError(t, db.AutoMigrate(&User{}))
+	if db.Migrator().HasColumn(&User{}, "AgentMemberRole") {
+		require.NoError(t, db.Migrator().DropColumn(&User{}, "AgentMemberRole"))
+	}
+	require.NoError(t, db.Exec(
+		"INSERT INTO users (username, password, aff_code, agent_id) VALUES (?, ?, ?, ?)",
+		"legacy-member", "placeholder", "leg1", 3,
+	).Error)
+	require.NoError(t, db.AutoMigrate(&User{}))
+	require.True(t, db.Migrator().HasColumn(&User{}, "AgentMemberRole"))
+	var loaded User
+	require.NoError(t, db.Where("username = ?", "legacy-member").First(&loaded).Error)
+	assert.Equal(t, "legacy-member", loaded.Username)
+	assert.Equal(t, 3, loaded.AgentId)
+	require.NoError(t, db.AutoMigrate(&User{}))
+}
+
+func TestAgentMemberRoleColumnSQLite(t *testing.T) {
+	assertAgentMemberRoleColumn(t, newAgentTestDB(t))
+}
+
+func TestBindUserToInviteAgentFromSalesTree(t *testing.T) {
+	newAgentTestDB(t)
+	agentUser := User{
+		Username: "agent-owner-2",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "own2",
+	}
+	require.NoError(t, DB.Create(&agentUser).Error)
+	agent := &Agent{
+		UserId:     agentUser.Id,
+		Name:       "reseller-pay",
+		InviteCode: "payorg",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+
+	sales := User{
+		Username:        "sales-pay",
+		Password:        "placeholder",
+		Role:            common.RoleCommonUser,
+		Status:          common.UserStatusEnabled,
+		Group:           "default",
+		AffCode:         "spay",
+		AgentId:         agent.Id,
+		AgentMemberRole: AgentMemberRoleSales,
+	}
+	require.NoError(t, DB.Create(&sales).Error)
+	customer := User{
+		Username:  "pay-customer",
+		Password:  "placeholder",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		Group:     "default",
+		AffCode:   "pcus",
+		InviterId: sales.Id,
+	}
+	require.NoError(t, DB.Create(&customer).Error)
+
+	require.NoError(t, BindUserToInviteAgent(&customer))
+	assert.Equal(t, agent.Id, customer.AgentId)
+	reloaded, err := GetUserById(customer.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, agent.Id, reloaded.AgentId)
+	assert.Equal(t, AgentMemberRoleUser, NormalizeAgentMemberRole(reloaded.AgentMemberRole))
 }
 
 func TestAgentChannelFilter(t *testing.T) {

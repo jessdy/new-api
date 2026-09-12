@@ -41,6 +41,12 @@ func resolveUserAgentId(userId int) int {
 	if err != nil || user == nil {
 		return 0
 	}
+	if user.AgentId > 0 {
+		return user.AgentId
+	}
+	if err := model.BindUserToInviteAgent(user); err != nil {
+		return 0
+	}
 	return user.AgentId
 }
 

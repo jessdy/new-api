@@ -270,35 +270,25 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
-	agentId := 0
-	agentGroup := ""
-	if agent, err := model.GetAgentByInviteCode(affCode); err == nil && agent != nil {
-		if agent.Status == model.AgentStatusEnabled {
-			agentId = agent.Id
-			agentGroup, _ = model.GetAgentDefaultGroupName(agent.Id)
-		}
-	} else if inviterId > 0 {
-		if agent, err := model.GetAgentByUserId(inviterId); err == nil && agent != nil && agent.Status == model.AgentStatusEnabled {
-			agentId = agent.Id
-			agentGroup, _ = model.GetAgentDefaultGroupName(agent.Id)
-		}
-	}
+	invite := model.ResolveRegistrationInvite(affCode)
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
-		InviterId:   inviterId,
-		AgentId:     agentId,
+		InviterId:   invite.InviterId,
+		AgentId:     invite.AgentId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
 	}
-	if agentGroup != "" {
-		cleanUser.Group = agentGroup
+	if invite.AgentId > 0 {
+		cleanUser.AgentMemberRole = model.AgentMemberRoleUser
+	}
+	if invite.AgentGroup != "" {
+		cleanUser.Group = invite.AgentGroup
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.Insert(invite.InviterId); err != nil {
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return

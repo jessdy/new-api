@@ -20,6 +20,9 @@ const (
 	AgentSettlementBillStatusOpen     = "open"
 	AgentSettlementBillStatusInvoiced = "invoiced"
 	AgentSettlementBillStatusPaid     = "paid"
+
+	AgentMemberRoleUser  = "user"
+	AgentMemberRoleSales = "sales"
 )
 
 // Agent is a reseller profile bound to a login user.
@@ -121,16 +124,234 @@ func GetAgentByUserId(userId int) (*Agent, error) {
 }
 
 func GetAgentByInviteCode(code string) (*Agent, error) {
-	code = strings.TrimSpace(code)
+	code = strings.ToLower(strings.TrimSpace(code))
 	if code == "" {
 		return nil, ErrAgentInviteInvalid
 	}
 	var agent Agent
-	err := DB.Where("invite_code = ?", code).First(&agent).Error
+	err := DB.Where("LOWER(invite_code) = ?", code).First(&agent).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrAgentInviteInvalid
 	}
 	return &agent, err
+}
+
+// RegistrationInviteBinding is the agent/inviter attachment derived from a
+// sign-up affiliate or reseller invite code.
+type RegistrationInviteBinding struct {
+	InviterId  int
+	AgentId    int
+	AgentGroup string
+}
+
+func NormalizeAgentMemberRole(role string) string {
+	if strings.ToLower(strings.TrimSpace(role)) == AgentMemberRoleSales {
+		return AgentMemberRoleSales
+	}
+	return AgentMemberRoleUser
+}
+
+func ResolveRegistrationInvite(code string) RegistrationInviteBinding {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return RegistrationInviteBinding{}
+	}
+	inviterId, _ := GetUserIdByAffCode(code)
+	if agent, err := GetAgentByInviteCode(code); err == nil && agent != nil && agent.Status == AgentStatusEnabled {
+		group, _ := GetAgentDefaultGroupName(agent.Id)
+		return RegistrationInviteBinding{InviterId: inviterId, AgentId: agent.Id, AgentGroup: group}
+	}
+	if inviterId <= 0 {
+		return RegistrationInviteBinding{}
+	}
+	if agent, err := GetAgentByUserId(inviterId); err == nil && agent != nil && agent.Status == AgentStatusEnabled {
+		group, _ := GetAgentDefaultGroupName(agent.Id)
+		return RegistrationInviteBinding{InviterId: inviterId, AgentId: agent.Id, AgentGroup: group}
+	}
+	inviter, err := GetUserById(inviterId, false)
+	if err != nil || inviter == nil || inviter.AgentId <= 0 {
+		return RegistrationInviteBinding{InviterId: inviterId}
+	}
+	agent, err := GetAgentById(inviter.AgentId)
+	if err != nil || agent == nil || agent.Status != AgentStatusEnabled {
+		return RegistrationInviteBinding{InviterId: inviterId}
+	}
+	group, _ := GetAgentDefaultGroupName(agent.Id)
+	return RegistrationInviteBinding{InviterId: inviterId, AgentId: agent.Id, AgentGroup: group}
+}
+
+func AttachInvitedUsersToAgent(agent *Agent) error {
+	if agent == nil || agent.Id <= 0 || agent.UserId <= 0 {
+		return nil
+	}
+	if _, err := attachUnboundInvitees(agent.Id, []int{agent.UserId}); err != nil {
+		return err
+	}
+	for range 16 {
+		var memberIds []int
+		if err := DB.Model(&User{}).Where("agent_id = ?", agent.Id).Pluck("id", &memberIds).Error; err != nil {
+			return err
+		}
+		if len(memberIds) == 0 {
+			return nil
+		}
+		attached, err := attachUnboundInvitees(agent.Id, memberIds)
+		if err != nil {
+			return err
+		}
+		if attached == 0 {
+			return nil
+		}
+	}
+	return nil
+}
+
+func attachUnboundInvitees(agentId int, inviterIds []int) (int64, error) {
+	if agentId <= 0 || len(inviterIds) == 0 {
+		return 0, nil
+	}
+	var ids []int
+	if err := DB.Model(&User{}).
+		Where("inviter_id IN ? AND agent_id = ?", inviterIds, 0).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := DB.Model(&User{}).Where("id IN ? AND agent_id = ?", ids, 0).Updates(map[string]any{
+		"agent_id":          agentId,
+		"agent_member_role": AgentMemberRoleUser,
+	})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	for _, id := range ids {
+		_ = invalidateUserCache(id)
+	}
+	return result.RowsAffected, nil
+}
+
+// BindUserToInviteAgent attaches a previously unbound user to the agent of
+// their invite tree. Sales and end-user invitees both stay under that agent.
+func BindUserToInviteAgent(user *User) error {
+	if user == nil || user.Id <= 0 || user.AgentId > 0 || user.InviterId <= 0 {
+		return nil
+	}
+	currentId := user.InviterId
+	for range 16 {
+		if currentId <= 0 {
+			return nil
+		}
+		if agent, err := GetAgentByUserId(currentId); err == nil && agent != nil && agent.Status == AgentStatusEnabled {
+			return persistInviteAgentBinding(user, agent)
+		}
+		inviter, err := GetUserById(currentId, false)
+		if err != nil || inviter == nil {
+			return nil
+		}
+		if inviter.AgentId > 0 {
+			agent, err := GetAgentById(inviter.AgentId)
+			if err != nil || agent == nil || agent.Status != AgentStatusEnabled {
+				return nil
+			}
+			return persistInviteAgentBinding(user, agent)
+		}
+		currentId = inviter.InviterId
+	}
+	return nil
+}
+
+func persistInviteAgentBinding(user *User, agent *Agent) error {
+	fields := map[string]any{"agent_id": agent.Id}
+	if strings.TrimSpace(user.AgentMemberRole) == "" {
+		fields["agent_member_role"] = AgentMemberRoleUser
+	}
+	if err := DB.Model(&User{}).Where("id = ? AND agent_id = ?", user.Id, 0).Updates(fields).Error; err != nil {
+		return err
+	}
+	user.AgentId = agent.Id
+	if strings.TrimSpace(user.AgentMemberRole) == "" {
+		user.AgentMemberRole = AgentMemberRoleUser
+	}
+	return invalidateUserCache(user.Id)
+}
+
+type AgentManagedUser struct {
+	Id              int    `json:"id"`
+	Username        string `json:"username"`
+	DisplayName     string `json:"display_name"`
+	Status          int    `json:"status"`
+	Group           string `json:"group"`
+	Quota           int    `json:"quota"`
+	UsedQuota       int    `json:"used_quota"`
+	AffCode         string `json:"aff_code"`
+	InviterId       int    `json:"inviter_id"`
+	InviterUsername string `json:"inviter_username"`
+	AgentMemberRole string `json:"agent_member_role"`
+	CreatedAt       int64  `json:"created_at"`
+}
+
+func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int64, error) {
+	agent, err := GetAgentById(agentId)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := AttachInvitedUsersToAgent(agent); err != nil {
+		return nil, 0, err
+	}
+	var total int64
+	if err := DB.Model(&User{}).Where("agent_id = ?", agentId).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []User
+	err = DB.Where("agent_id = ?", agentId).
+		Omit("Password", "AccessToken", "AccessTokenCreatedAt", "Setting", "OriginalPassword").
+		Order("id desc").Offset(offset).Limit(limit).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	inviterIds := make([]int, 0)
+	seen := map[int]struct{}{}
+	for i := range users {
+		inviterId := users[i].InviterId
+		if inviterId <= 0 {
+			continue
+		}
+		if _, ok := seen[inviterId]; ok {
+			continue
+		}
+		seen[inviterId] = struct{}{}
+		inviterIds = append(inviterIds, inviterId)
+	}
+	names := map[int]string{}
+	if len(inviterIds) > 0 {
+		var inviters []User
+		if err := DB.Select("id", "username").Where("id IN ?", inviterIds).Find(&inviters).Error; err != nil {
+			return nil, 0, err
+		}
+		for i := range inviters {
+			names[inviters[i].Id] = inviters[i].Username
+		}
+	}
+	items := make([]AgentManagedUser, 0, len(users))
+	for i := range users {
+		items = append(items, AgentManagedUser{
+			Id:              users[i].Id,
+			Username:        users[i].Username,
+			DisplayName:     users[i].DisplayName,
+			Status:          users[i].Status,
+			Group:           users[i].Group,
+			Quota:           users[i].Quota,
+			UsedQuota:       users[i].UsedQuota,
+			AffCode:         users[i].AffCode,
+			InviterId:       users[i].InviterId,
+			InviterUsername: names[users[i].InviterId],
+			AgentMemberRole: NormalizeAgentMemberRole(users[i].AgentMemberRole),
+			CreatedAt:       users[i].CreatedAt,
+		})
+	}
+	return items, total, nil
 }
 
 func GetEnabledAgentById(id int) (*Agent, error) {
@@ -151,6 +372,7 @@ func CreateAgent(agent *Agent) error {
 	if agent == nil {
 		return errors.New("agent is nil")
 	}
+	agent.InviteCode = strings.ToLower(strings.TrimSpace(agent.InviteCode))
 	if agent.InviteCode == "" {
 		agent.InviteCode = strings.ToLower(common.GetRandomString(8))
 	}

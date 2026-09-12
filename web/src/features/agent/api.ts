@@ -77,6 +77,8 @@ export type AgentModelPrice = {
   discount_ratio: number
 }
 
+export type AgentMemberRole = 'user' | 'sales'
+
 export type AgentUser = {
   id: number
   username: string
@@ -85,6 +87,10 @@ export type AgentUser = {
   group: string
   quota: number
   used_quota: number
+  aff_code?: string
+  inviter_id?: number
+  inviter_username?: string
+  agent_member_role?: AgentMemberRole
 }
 
 export type AgentPaymentConfigView = {
@@ -110,7 +116,7 @@ export type AgentPaymentConfigView = {
 
 export async function getAgentSelf(agentId?: number): Promise<AgentSummary> {
   const res = await api.get('/api/agent/self', { params: agentParams(agentId) })
-  requireServerSuccess(res.data, 'Failed to load agent profile')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -120,7 +126,7 @@ export async function listAgentChannels(
   const res = await api.get('/api/agent/channels', {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to load channels')
+  requireServerSuccess(res.data)
   return res.data.data ?? []
 }
 
@@ -133,14 +139,14 @@ export async function replaceAgentChannels(
     { channel_ids: channelIds },
     { params: agentParams(agentId) }
   )
-  requireServerSuccess(res.data, 'Failed to save channels')
+  requireServerSuccess(res.data)
 }
 
 export async function listAgentGroups(
   agentId?: number
 ): Promise<AgentGroupPricingView> {
   const res = await api.get('/api/agent/groups', { params: agentParams(agentId) })
-  requireServerSuccess(res.data, 'Failed to load groups')
+  requireServerSuccess(res.data)
   return (
     res.data.data ?? {
       group_ratio: {},
@@ -162,7 +168,7 @@ export async function upsertAgentGroup(
   const res = await api.put('/api/agent/groups', pricing, {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to save group')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -172,7 +178,7 @@ export async function listAgentModelPrices(
   const res = await api.get('/api/agent/model-prices', {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to load model prices')
+  requireServerSuccess(res.data)
   return res.data.data ?? []
 }
 
@@ -183,7 +189,7 @@ export async function upsertAgentModelPrice(
   const res = await api.put('/api/agent/model-prices', price, {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to save model price')
+  requireServerSuccess(res.data)
 }
 
 export async function listAgentUsers(
@@ -194,7 +200,7 @@ export async function listAgentUsers(
   const res = await api.get('/api/agent/users', {
     params: { p: page, page_size: pageSize, ...agentParams(agentId) },
   })
-  requireServerSuccess(res.data, 'Failed to load agent users')
+  requireServerSuccess(res.data)
   return res.data.data as {
     items: AgentUser[]
     total: number
@@ -203,13 +209,24 @@ export async function listAgentUsers(
   }
 }
 
+export async function updateAgentUser(
+  userId: number,
+  payload: { agent_member_role?: AgentMemberRole; group?: string; status?: number },
+  agentId?: number
+): Promise<void> {
+  const res = await api.put(`/api/agent/users/${userId}`, payload, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+}
+
 export async function getAgentPaymentConfig(
   agentId?: number
 ): Promise<AgentPaymentConfigView> {
   const res = await api.get('/api/agent/payment', {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to load payment config')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -220,7 +237,7 @@ export async function updateAgentPaymentConfig(
   const res = await api.put('/api/agent/payment', payload, {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to save payment config')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -228,7 +245,7 @@ export async function listAgentSettlement(agentId?: number) {
   const res = await api.get('/api/agent/settlement', {
     params: agentParams(agentId),
   })
-  requireServerSuccess(res.data, 'Failed to load settlement')
+  requireServerSuccess(res.data)
   return res.data.data as {
     items: Array<Record<string, unknown>>
     total: number
@@ -251,7 +268,7 @@ export async function adminListAgents(
       ...(userId && userId > 0 ? { user_id: userId } : {}),
     },
   })
-  requireServerSuccess(res.data, 'Failed to load agents')
+  requireServerSuccess(res.data)
   return res.data.data as {
     items: AgentSummary[]
     total: number
@@ -269,7 +286,7 @@ export async function adminCreateAgent(payload: {
   status?: string
 }): Promise<AgentSummary> {
   const res = await api.post('/api/agents/', payload)
-  requireServerSuccess(res.data, 'Failed to create agent')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -283,7 +300,7 @@ export async function adminUpdateAgent(
   }
 ): Promise<AgentSummary> {
   const res = await api.put(`/api/agents/${id}`, payload)
-  requireServerSuccess(res.data, 'Failed to update agent')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
@@ -292,11 +309,11 @@ export async function adminCreateSettlementBill(
   payload: { period_start: number; period_end: number; platform_quota?: number }
 ) {
   const res = await api.post(`/api/agents/${agentId}/settlement-bills`, payload)
-  requireServerSuccess(res.data, 'Failed to create settlement bill')
+  requireServerSuccess(res.data)
   return res.data.data
 }
 
 export async function adminMarkSettlementBillPaid(billId: number) {
   const res = await api.post(`/api/agents/settlement-bills/${billId}/paid`)
-  requireServerSuccess(res.data, 'Failed to mark bill paid')
+  requireServerSuccess(res.data)
 }

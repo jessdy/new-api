@@ -146,7 +146,7 @@ func AdminUpdateAgent(c *gin.Context) {
 		fields["credit_limit"] = *req.CreditLimit
 	}
 	if req.InviteCode != nil {
-		fields["invite_code"] = strings.TrimSpace(*req.InviteCode)
+		fields["invite_code"] = strings.ToLower(strings.TrimSpace(*req.InviteCode))
 	}
 	if len(fields) == 0 {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "no fields to update"})

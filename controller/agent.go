@@ -202,15 +202,7 @@ func AgentListUsers(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	var total int64
-	if err := model.DB.Model(&model.User{}).Where("agent_id = ?", agent.Id).Count(&total).Error; err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	var users []model.User
-	err := model.DB.Where("agent_id = ?", agent.Id).
-		Select("id", "username", "display_name", "role", "status", "email", "`group`", "quota", "used_quota", "request_count", "agent_id", "created_at").
-		Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&users).Error
+	users, total, err := model.ListUsersByAgentId(agent.Id, (page-1)*pageSize, pageSize)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -224,8 +216,9 @@ func AgentListUsers(c *gin.Context) {
 }
 
 type updateAgentUserRequest struct {
-	Status *int    `json:"status"`
-	Group  *string `json:"group"`
+	Status          *int    `json:"status"`
+	Group           *string `json:"group"`
+	AgentMemberRole *string `json:"agent_member_role"`
 }
 
 func AgentUpdateUser(c *gin.Context) {
@@ -260,6 +253,14 @@ func AgentUpdateUser(c *gin.Context) {
 			return
 		}
 		fields["group"] = groupName
+	}
+	if req.AgentMemberRole != nil {
+		role := strings.ToLower(strings.TrimSpace(*req.AgentMemberRole))
+		if role != model.AgentMemberRoleUser && role != model.AgentMemberRoleSales {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid member role"})
+			return
+		}
+		fields["agent_member_role"] = role
 	}
 	if len(fields) == 0 {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "no fields to update"})

@@ -22,12 +22,12 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CopyButton } from '@/components/copy-button'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { generateAffiliateLink } from '@/features/wallet/lib/affiliate'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -36,11 +36,11 @@ import {
   getAgentSelf,
   listAgentChannels,
   listAgentSettlement,
-  listAgentUsers,
   replaceAgentChannels,
 } from './api'
 import { AgentPaymentPanel } from './components/agent-payment-panel'
 import { AgentPricingPanel } from './components/agent-pricing-panel'
+import { AgentUsersPanel } from './components/agent-users-panel'
 
 const agentRouteApi = getRouteApi('/_authenticated/agent/')
 
@@ -78,16 +78,37 @@ export function AgentConsole() {
         ) : null}
         {showConsole ? (
           <>
-        <div className='text-muted-foreground mb-4 text-sm'>
-          {selfQuery.data
-            ? t('Invite code: {{code}} · Debt: {{debt}} / Credit: {{credit}}', {
-                code: selfQuery.data.invite_code,
-                debt: selfQuery.data.settlement_debt,
-                credit: selfQuery.data.credit_limit,
-              })
-            : t(
-                'Manage channels, pricing, users, and payment for your reseller account.'
-              )}
+        <div className='mb-4 space-y-2'>
+          <p className='text-muted-foreground text-sm'>
+            {selfQuery.data
+              ? t(
+                  'Invite code: {{code}} · Debt: {{debt}} / Credit: {{credit}}',
+                  {
+                    code: selfQuery.data.invite_code,
+                    debt: selfQuery.data.settlement_debt,
+                    credit: selfQuery.data.credit_limit,
+                  }
+                )
+              : t(
+                  'Manage channels, pricing, users, and payment for your reseller account.'
+                )}
+          </p>
+          {selfQuery.data?.invite_code ? (
+            <div className='flex flex-wrap items-center gap-2 text-sm'>
+              <span className='text-muted-foreground'>
+                {t('Invite registration link')}
+              </span>
+              <code className='bg-muted max-w-full truncate rounded px-2 py-1'>
+                {generateAffiliateLink(selfQuery.data.invite_code)}
+              </code>
+              <CopyButton
+                value={generateAffiliateLink(selfQuery.data.invite_code)}
+                variant='outline'
+                size='sm'
+                aria-label={t('Copy invite link')}
+              />
+            </div>
+          ) : null}
         </div>
         <Tabs defaultValue='channels'>
           <TabsList>
@@ -190,27 +211,6 @@ function AgentChannelsPanel(props: {
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function AgentUsersPanel(props: { agentId?: number }) {
-  const { t } = useTranslation()
-  const usersQuery = useQuery({
-    queryKey: ['agent', 'users', props.agentId],
-    queryFn: () => listAgentUsers(1, 50, props.agentId),
-  })
-  return (
-    <div className='space-y-2'>
-      {(usersQuery.data?.items ?? []).map((user) => (
-        <div key={user.id} className='rounded-md border p-3 text-sm'>
-          #{user.id} {user.username} · {t('Group')}: {user.group} ·{' '}
-          {t('Quota')}: {user.quota}
-        </div>
-      ))}
-      {!usersQuery.data?.items?.length ? (
-        <div className='text-muted-foreground text-sm'>{t('No users yet')}</div>
-      ) : null}
     </div>
   )
 }
