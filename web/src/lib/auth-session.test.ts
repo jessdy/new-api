@@ -17,15 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient } from '@tanstack/react-query'
-import { afterEach, describe, expect, test } from 'vitest'
+import axios, { AxiosError, AxiosHeaders } from 'axios'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { useAuthStore, type AuthBundle } from '../stores/auth-store'
 import {
   applyAuthRotation,
   bootstrapAuthentication,
   clearAuthenticatedClientState,
+  clearAuthentication,
   createRefreshRunner,
   isAuthBundle,
+  refreshAuthentication,
+  resolveAuthentication,
   type AuthRefreshRuntime,
 } from './auth-session'
 
@@ -51,7 +55,7 @@ const bundle: AuthBundle = {
 }
 
 afterEach(() => {
-  useAuthStore.getState().auth.reset('idle')
+  clearAuthentication(false, 'idle')
 })
 
 describe('authentication session coordination', () => {
@@ -143,6 +147,44 @@ describe('authentication session coordination', () => {
     expect(outcome.kind).toBe('transient_error')
     expect(clearCount).toBe(0)
     expect(transientCount).toBe(1)
+  })
+
+  test('a rate-limited refresh is not retried until Retry-After elapses', async () => {
+    vi.useFakeTimers()
+    let requests = 0
+    const spy = vi
+      .spyOn(axios.Axios.prototype, 'request')
+      .mockImplementation(async () => {
+        requests += 1
+        throw new AxiosError(
+          'Request failed with status code 429',
+          'ERR_BAD_REQUEST',
+          undefined,
+          undefined,
+          {
+            data: { success: false, message: 'Too many requests' },
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: { 'retry-after': '20' },
+            config: { headers: new AxiosHeaders() },
+          }
+        )
+      })
+
+    try {
+      const first = await refreshAuthentication()
+      const second = await resolveAuthentication()
+      expect(first.kind).toBe('transient_error')
+      expect(second.kind).toBe('transient_error')
+      expect(requests).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(20_000)
+      await refreshAuthentication()
+      expect(requests).toBe(2)
+    } finally {
+      spy.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   test('a rate limited refresh remains retryable without clearing the session', async () => {

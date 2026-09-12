@@ -140,7 +140,10 @@ func writeRateLimited(c *gin.Context, retryAfterSeconds int64) {
 	if retryAfterSeconds > 0 {
 		c.Header("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	}
-	c.Status(http.StatusTooManyRequests)
+	c.JSON(http.StatusTooManyRequests, gin.H{
+		"success": false,
+		"message": "Too many requests",
+	})
 	c.Abort()
 }
 
@@ -172,8 +175,22 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
+	return criticalRateLimitMark("CT")
+}
+
+// CriticalRateLimitScope uses the same numeric budget as CriticalRateLimit
+// but a separate IP key. Session refresh must not exhaust the login
+// brute-force bucket (OWASP ASVS 5.0.0 V2.2.1, V11.1.4).
+func CriticalRateLimitScope(scope string) func(c *gin.Context) {
+	if scope == "" {
+		return CriticalRateLimit()
+	}
+	return criticalRateLimitMark("CT:" + scope)
+}
+
+func criticalRateLimitMark(mark string) func(c *gin.Context) {
 	if common.CriticalRateLimitEnable {
-		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, mark)
 	}
 	return defNext
 }

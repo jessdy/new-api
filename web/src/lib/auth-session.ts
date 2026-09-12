@@ -77,8 +77,11 @@ const authClient = axios.create({
 })
 
 const refreshRaceDelays = [80, 200, 500] as const
+const defaultTransientRefreshBackoffSeconds = 5
 let refreshPromise: Promise<RefreshOutcome> | null = null
 let authEpoch = 0
+let refreshBackoffUntil = 0
+let lastTransientRefresh: RefreshOutcome | null = null
 
 class AuthRefreshSupersededError extends Error {
   constructor() {
@@ -190,6 +193,8 @@ export function clearAuthentication(
 ): void {
   const sid = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
+  refreshBackoffUntil = 0
+  lastTransientRefresh = null
   useAuthStore.getState().auth.reset(bootstrapState)
   if (synchronizeTabs && sid) {
     publishAuthSessionEvent('signed_out', sid)
@@ -332,12 +337,37 @@ async function performRefreshWithBrowserLock(
   }
 }
 
+function retryAfterSecondsFromError(error: unknown): number {
+  if (!axios.isAxiosError(error)) return defaultTransientRefreshBackoffSeconds
+  const header = error.response?.headers?.['retry-after']
+  const parsed = Number.parseInt(String(header ?? ''), 10)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return defaultTransientRefreshBackoffSeconds
+}
+
 export function refreshAuthentication(): Promise<RefreshOutcome> {
+  if (lastTransientRefresh && Date.now() < refreshBackoffUntil) {
+    return Promise.resolve(lastTransientRefresh)
+  }
   if (!refreshPromise) {
     const refreshEpoch = authEpoch
-    refreshPromise = performRefreshWithBrowserLock(refreshEpoch).finally(() => {
-      refreshPromise = null
-    })
+    refreshPromise = performRefreshWithBrowserLock(refreshEpoch)
+      .then((outcome) => {
+        if (outcome.kind === 'transient_error') {
+          refreshBackoffUntil =
+            Date.now() + retryAfterSecondsFromError(outcome.error) * 1000
+          lastTransientRefresh = outcome
+        } else {
+          refreshBackoffUntil = 0
+          lastTransientRefresh = null
+        }
+        return outcome
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
   }
   return refreshPromise
 }

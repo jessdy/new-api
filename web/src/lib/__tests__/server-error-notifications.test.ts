@@ -234,6 +234,7 @@ it.each([
   ],
   [{ error: 'String error' }, 'String error'],
   [{ title: 'Response title' }, 'Response title'],
+  [{ response: { status: 429, data: {} } }, 'Too many requests'],
   [{ response: { status: 304, data: {} } }, 'Content not modified!'],
   [{ message: ' ' }, 'Operation failed'],
   [null, 'Operation failed'],

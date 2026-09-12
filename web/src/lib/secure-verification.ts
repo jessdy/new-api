@@ -40,17 +40,19 @@ export class AuthOperationError extends Error {
   ): AuthOperationError {
     if (error instanceof AuthOperationError) return error
     if (axios.isAxiosError<{ message?: string; code?: string }>(error)) {
-      return new AuthOperationError(
-        getServerErrorMessageKey(error) ||
-          (error.response && error.response.status >= 500
-            ? 'Please try again later.'
-            : undefined) ||
-          error.response?.data?.message ||
-          error.message ||
-          fallback,
-        error.response?.data?.code,
-        { cause: error }
-      )
+      const status = error.response?.status
+      let message = getServerErrorMessageKey(error)
+      if (!message && status === 429) {
+        message = 'Too many requests'
+      } else if (!message && status !== undefined && status >= 500) {
+        message = 'Please try again later.'
+      } else if (!message) {
+        message =
+          error.response?.data?.message || error.message || fallback
+      }
+      return new AuthOperationError(message, error.response?.data?.code, {
+        cause: error,
+      })
     }
     return new AuthOperationError(
       error instanceof Error ? error.message : fallback,

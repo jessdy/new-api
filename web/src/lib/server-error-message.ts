@@ -168,6 +168,8 @@ export function getServerErrorMessage(
   }
   const key = getServerErrorMessageKey(value)
   if (key) return i18next.t(key)
+  const status = getServerErrorStatus(value)
+  if (status === 429) return i18next.t('Too many requests')
   for (const source of sources) {
     if (
       source instanceof Error ||
@@ -183,7 +185,6 @@ export function getServerErrorMessage(
       messageText(source.message) || detail || messageText(source.title)
     if (message) return message
   }
-  const status = getServerErrorStatus(value)
   if (status === 304) return i18next.t('Content not modified!')
   if (status === 204) return i18next.t('Content not found.')
   for (const source of sources) {

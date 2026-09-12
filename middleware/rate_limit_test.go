@@ -64,6 +64,10 @@ func TestRedisIPRateLimiterThresholdTTLAndNamespace(t *testing.T) {
 	limitedResponse := performRateLimitRequest(router, "/limited", remoteAddr)
 	assert.Equal(t, http.StatusTooManyRequests, limitedResponse.Code)
 	assert.Equal(t, "37", limitedResponse.Header().Get("Retry-After"))
+	var limitedBody map[string]any
+	require.NoError(t, common.Unmarshal(limitedResponse.Body.Bytes(), &limitedBody))
+	assert.Equal(t, false, limitedBody["success"])
+	assert.Equal(t, "Too many requests", limitedBody["message"])
 
 	key := redisIPRateLimitKey("TEST", "192.0.2.10")
 	count, err := redisServer.Get(key)
@@ -222,4 +226,35 @@ func TestRedisFailurePolicies(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, userResponse.Code)
 	assert.Empty(t, userResponse.Body.String())
 	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/email", "192.0.2.62:12345").Code)
+}
+
+func TestCriticalRateLimitScopesDoNotShareBudget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	useRateLimitMiniRedis(t)
+
+	previousEnable := common.CriticalRateLimitEnable
+	previousNum := common.CriticalRateLimitNum
+	previousDuration := common.CriticalRateLimitDuration
+	common.CriticalRateLimitEnable = true
+	common.CriticalRateLimitNum = 1
+	common.CriticalRateLimitDuration = 60
+	t.Cleanup(func() {
+		common.CriticalRateLimitEnable = previousEnable
+		common.CriticalRateLimitNum = previousNum
+		common.CriticalRateLimitDuration = previousDuration
+	})
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.GET("/login", CriticalRateLimitScope("auth"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/refresh", CriticalRateLimitScope("session"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	remoteAddr := "192.0.2.80:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/refresh", remoteAddr).Code)
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/refresh", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/login", remoteAddr).Code)
 }
