@@ -30,7 +30,12 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
-import type { QuotaAdjustMode } from '../types'
+import type {
+  ApiResponse,
+  ManageUserQuotaPayload,
+  QuotaAdjustMode,
+  User,
+} from '../types'
 
 interface UserQuotaDialogProps {
   open: boolean
@@ -38,6 +43,13 @@ interface UserQuotaDialogProps {
   userId: number
   currentQuota: number
   onSuccess: () => void
+  /**
+   * Optional custom adjust handler. Defaults to the admin manage-user API.
+   * Agent console passes its own endpoint while reusing the same dialog UI.
+   */
+  adjustFn?: (
+    payload: ManageUserQuotaPayload
+  ) => Promise<ApiResponse<Partial<User>>>
 }
 
 export function UserQuotaDialog(props: UserQuotaDialogProps) {
@@ -78,12 +90,13 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
     try {
       const value =
         mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
-      const result = await adjustUserQuota({
+      const payload = {
         id: props.userId,
-        action: 'add_quota',
+        action: 'add_quota' as const,
         mode,
         value: mode === 'override' ? value : Math.abs(value),
-      })
+      }
+      const result = await (props.adjustFn ?? adjustUserQuota)(payload)
       if (result.success) {
         toast.success(t('Quota adjusted successfully'))
         setAmount('')

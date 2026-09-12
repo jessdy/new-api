@@ -119,6 +119,37 @@ it('lets an agent mark an invited user as sales', async () => {
 
   expect(await screen.findByText('End user')).toBeInTheDocument()
   expect(screen.getByText(/Invited by/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Adjust Quota' })).toBeEnabled()
   await userEvent.click(screen.getByRole('button', { name: 'Mark as sales' }))
   expect(update).toHaveBeenCalledWith(12, { agent_member_role: 'sales' }, undefined)
+})
+
+it('opens the quota dialog for an invited user', async () => {
+  vi.spyOn(agentApi, 'listAgentUsers').mockResolvedValue({
+    items: [
+      {
+        id: 12,
+        username: 'invited-alice',
+        display_name: 'Alice',
+        status: 1,
+        group: 'default',
+        quota: 100,
+        used_quota: 0,
+        agent_member_role: 'user',
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 50,
+  })
+
+  renderPanel()
+
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Adjust Quota' })
+  )
+  expect(
+    await screen.findByText('Select an operation mode and enter the amount')
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
 })

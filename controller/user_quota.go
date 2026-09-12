@@ -12,13 +12,22 @@ import (
 )
 
 func manageUserQuota(c *gin.Context, req ManageRequest) {
+	adjustManagedUserQuota(c, req.Id, req.Mode, req.Value, nil)
+}
+
+// adjustManagedUserQuota applies an admin/agent manual quota change and records
+// both the recipient top-up log and the operator audit trail.
+func adjustManagedUserQuota(c *gin.Context, targetUserId int, mode string, value int, extraParams model.AuditFields) {
 	action := "generic"
 	params := model.AuditFields{
-		"target_user_id":  req.Id,
-		"mode":            req.Mode,
-		"requested_quota": req.Value,
+		"target_user_id":  targetUserId,
+		"mode":            mode,
+		"requested_quota": value,
 	}
-	switch req.Mode {
+	for key, val := range extraParams {
+		params[key] = val
+	}
+	switch mode {
 	case "add":
 		action = "user.quota_add"
 	case "subtract":
@@ -44,12 +53,12 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 		markAuditLogged(c)
 	}()
 
-	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value)
+	adjustment, err := model.AdjustUserQuota(targetUserId, c.GetInt("role"), mode, value)
 	if err != nil {
 		switch {
 		case errors.Is(err, model.ErrInvalidUserQuotaAdjustment):
 			params["failure_reason"] = "invalid_parameters"
-			if (req.Mode == "add" || req.Mode == "subtract") && req.Value <= 0 {
+			if (mode == "add" || mode == "subtract") && value <= 0 {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 			} else {
 				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -73,8 +82,8 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 	params["target_username"] = adjustment.Username
 	params["from"] = adjustment.Before
 	params["to"] = adjustment.After
-	if req.Mode != "override" {
-		params["quota"] = req.Value
+	if mode != "override" {
+		params["quota"] = value
 	}
 	success = true
 	operation := model.AuditOperation{Action: action, Params: params}

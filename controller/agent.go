@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
@@ -271,6 +272,37 @@ func AgentUpdateUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+type agentAdjustUserQuotaRequest struct {
+	Mode  string `json:"mode"`
+	Value int    `json:"value"`
+}
+
+func AgentAdjustUserQuota(c *gin.Context) {
+	agent, ok := middleware.GetCurrentAgent(c)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
+		return
+	}
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userId <= 0 {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid user id"})
+		return
+	}
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil || user.AgentId != agent.Id {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user not found"})
+		return
+	}
+	var req agentAdjustUserQuotaRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	adjustManagedUserQuota(c, userId, req.Mode, req.Value, model.AuditFields{
+		"agent_id": agent.Id,
+	})
 }
 
 func middlewareAgentOwnsGroup(agentId int, name string) bool {

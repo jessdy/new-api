@@ -12,9 +12,10 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with this program. If you did not, see <https://www.gnu.org/licenses/>.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -25,9 +26,12 @@ import { LoadingState } from '@/components/loading-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { generateAffiliateLink } from '@/features/wallet/lib/affiliate'
+import { UserQuotaDialog } from '@/features/users/components/user-quota-dialog'
+import { formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
+  adjustAgentUserQuota,
   listAgentUsers,
   updateAgentUser,
   type AgentMemberRole,
@@ -40,6 +44,7 @@ function memberRole(user: AgentUser): AgentMemberRole {
 
 export function AgentUsersPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
+  const [quotaUser, setQuotaUser] = useState<AgentUser | null>(null)
   const usersQuery = useQuery({
     queryKey: ['agent', 'users', props.agentId],
     queryFn: () => listAgentUsers(1, 50, props.agentId),
@@ -108,7 +113,8 @@ export function AgentUsersPanel(props: { agentId?: number }) {
                 </Badge>
               </div>
               <div className='text-muted-foreground'>
-                {t('Group')}: {user.group} · {t('Quota')}: {user.quota}
+                {t('Group')}: {user.group} · {t('Quota')}:{' '}
+                {formatQuota(user.quota)}
                 {user.inviter_username
                   ? ` · ${t('Invited by')}: ${user.inviter_username}`
                   : ''}
@@ -128,23 +134,53 @@ export function AgentUsersPanel(props: { agentId?: number }) {
                   ) : null}
                 </div>
               ) : null}
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={roleMutation.isPending}
-                onClick={() =>
-                  roleMutation.mutate({
-                    userId: user.id,
-                    role: isSales ? 'user' : 'sales',
-                  })
-                }
-              >
-                {isSales ? t('Mark as end user') : t('Mark as sales')}
-              </Button>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => setQuotaUser(user)}
+                >
+                  {t('Adjust Quota')}
+                </Button>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  disabled={roleMutation.isPending}
+                  onClick={() =>
+                    roleMutation.mutate({
+                      userId: user.id,
+                      role: isSales ? 'user' : 'sales',
+                    })
+                  }
+                >
+                  {isSales ? t('Mark as end user') : t('Mark as sales')}
+                </Button>
+              </div>
             </div>
           )
         })}
       </div>
+      {quotaUser ? (
+        <UserQuotaDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setQuotaUser(null)
+          }}
+          userId={quotaUser.id}
+          currentQuota={quotaUser.quota}
+          adjustFn={async (payload) =>
+            adjustAgentUserQuota(
+              payload.id,
+              { mode: payload.mode, value: payload.value },
+              props.agentId
+            )
+          }
+          onSuccess={() => {
+            setQuotaUser(null)
+            void usersQuery.refetch()
+          }}
+        />
+      ) : null}
     </div>
   )
 }

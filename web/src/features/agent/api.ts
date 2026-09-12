@@ -220,6 +220,18 @@ export async function updateAgentUser(
   requireServerSuccess(res.data)
 }
 
+export async function adjustAgentUserQuota(
+  userId: number,
+  payload: { mode: 'add' | 'subtract' | 'override'; value: number },
+  agentId?: number
+) {
+  const res = await api.post(`/api/agent/users/${userId}/quota`, payload, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+  return res.data as { success: boolean; message?: string }
+}
+
 export async function getAgentPaymentConfig(
   agentId?: number
 ): Promise<AgentPaymentConfigView> {

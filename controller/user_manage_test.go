@@ -606,3 +606,78 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 		})
 	}
 }
+
+func TestAgentAdjustUserQuotaRecordsTopupAndAudit(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Agent{}))
+
+	agentOwner := model.User{
+		Username: "agent-owner-quota", Password: "password", Role: common.RoleAgentUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "agow", AuthVersion: 1,
+	}
+	require.NoError(t, db.Create(&agentOwner).Error)
+	agent := &model.Agent{
+		UserId: agentOwner.Id, Name: "quota-agent", InviteCode: "quotaagent", Status: model.AgentStatusEnabled,
+	}
+	require.NoError(t, db.Create(agent).Error)
+
+	member := model.User{
+		Username: "agent-member-quota", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "agmb", AuthVersion: 1,
+		Quota: 1000, AgentId: agent.Id,
+	}
+	require.NoError(t, db.Create(&member).Error)
+	outsider := model.User{
+		Username: "outsider-quota", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "outs", AuthVersion: 1,
+		Quota: 1000, AgentId: 0,
+	}
+	require.NoError(t, db.Create(&outsider).Error)
+
+	gin.SetMode(gin.TestMode)
+	perform := func(userId int, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(userId)}}
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/agent/users/"+strconv.Itoa(userId)+"/quota", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("id", agentOwner.Id)
+		c.Set("role", common.RoleAgentUser)
+		c.Set("username", agentOwner.Username)
+		c.Set("agent", agent)
+		c.Set("agent_id", agent.Id)
+		c.Set(common.RequestIdKey, "agent-quota-test")
+		AgentAdjustUserQuota(c)
+		return recorder
+	}
+
+	recorder := perform(outsider.Id, `{"mode":"add","value":500}`)
+	assert.Contains(t, recorder.Body.String(), `"success":false`)
+	require.NoError(t, db.First(&outsider, outsider.Id).Error)
+	assert.Equal(t, 1000, outsider.Quota)
+
+	recorder = perform(member.Id, `{"mode":"add","value":500}`)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	require.NoError(t, db.First(&member, member.Id).Error)
+	assert.Equal(t, 1500, member.Quota)
+
+	logs, total, err := model.GetAllLogs(model.LogTypeTopup, 0, 0, "", "", "", 0, 20, 0, "", "", "")
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	require.Len(t, logs, 1)
+	assert.Equal(t, member.Id, logs[0].UserId)
+	assert.Equal(t, "Increased user quota by 500", logs[0].Content)
+
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Find(&audits).Error)
+	require.Len(t, audits, 1)
+	assert.True(t, audits[0].Success)
+	assert.Equal(t, agentOwner.Id, audits[0].UserId)
+	assert.Equal(t, "user.quota_add", audits[0].Action)
+	params, err := common.Marshal(audits[0].Other.Op.Params)
+	require.NoError(t, err)
+	assert.Contains(t, string(params), `"agent_id":`+strconv.Itoa(agent.Id))
+	assert.Contains(t, string(params), `"target_user_id":`+strconv.Itoa(member.Id))
+}
