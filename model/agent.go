@@ -305,8 +305,9 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 		return nil, 0, err
 	}
 	var users []User
-	err = DB.Where("agent_id = ?", agentId).
-		Omit("Password", "AccessToken", "AccessTokenCreatedAt", "Setting", "OriginalPassword").
+	err = DB.Model(&User{}).
+		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "created_at").
+		Where("agent_id = ?", agentId).
 		Order("id desc").Offset(offset).Limit(limit).Find(&users).Error
 	if err != nil {
 		return nil, 0, err

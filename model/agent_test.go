@@ -1,6 +1,8 @@
 package model
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -8,6 +10,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -116,6 +119,56 @@ func TestAgentInviteBinding(t *testing.T) {
 	require.Len(t, users, 2)
 	ids := []int{users[0].Id, users[1].Id}
 	assert.ElementsMatch(t, []int{invited.Id, viaAff.Id}, ids)
+}
+
+func TestListUsersByAgentIdPostgres(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN is not configured")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.AutoMigrate(&Agent{}, &User{}))
+	previous := DB
+	DB = db
+	t.Cleanup(func() { DB = previous })
+
+	owner := User{
+		Username: "pg-agent-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "pgow",
+	}
+	require.NoError(t, DB.Create(&owner).Error)
+	agent := &Agent{
+		UserId:     owner.Id,
+		Name:       "pg-list",
+		InviteCode: "pglist",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	member := User{
+		Username: "pg-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "pgmb",
+		AgentId:  agent.Id,
+	}
+	require.NoError(t, DB.Create(&member).Error)
+
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, users, 1)
+	assert.Equal(t, member.Id, users[0].Id)
+	assert.Equal(t, "default", users[0].Group)
 }
 
 func TestAgentSalesInviteInheritsAgent(t *testing.T) {
