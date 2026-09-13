@@ -40,9 +40,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import {
-  type ModelPricingEntry,
-} from '@/features/model-pricing/api'
+import type { ModelPricingEntry } from '@/features/model-pricing/api'
 import {
   modelPricingDisplay,
   pricingFromDraft,
@@ -76,6 +74,7 @@ type DraftModel = {
   enabled: boolean
   pricing: PricingValues
   effective: PricingValues
+  agentCost: PricingValues
   version: string
 }
 
@@ -83,8 +82,9 @@ function toDraft(item: AgentUserModelSettingItem): DraftModel {
   return {
     model_name: item.model_name,
     enabled: item.enabled,
-    pricing: { ...(item.pricing ?? {}) },
-    effective: { ...(item.effective ?? item.pricing ?? {}) },
+    pricing: { ...item.pricing },
+    effective: { ...(item.effective ?? item.pricing) },
+    agentCost: { ...item.agent_cost },
     version: item.version,
   }
 }
@@ -194,15 +194,12 @@ export function AgentUserModelSettingsDialog(
       },
       {
         id: 'price',
-        header: t('Settlement price'),
+        header: t('Cost price'),
         cell: (row) => (
           <ModelPriceCell
             model={modelPricingDisplay({
               model_name: row.model_name,
-              effective: {
-                ...row.effective,
-                ...row.pricing,
-              },
+              effective: row.agentCost,
             })}
             options={{ tokenUnit: 'M' }}
             showExpression={false}
@@ -289,7 +286,7 @@ export function AgentUserModelSettingsDialog(
               <EmptyState
                 title={t('No models')}
                 description={t(
-                  'Select channels first to populate the agent model list.'
+                  'No models have been priced for this agent by the administrator.'
                 )}
               />
             ) : (

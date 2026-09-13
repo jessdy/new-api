@@ -28,6 +28,7 @@ type AgentUserModelSettingView struct {
 	Enabled   bool          `json:"enabled"`
 	Pricing   PricingValues `json:"pricing,omitempty"`
 	Effective PricingValues `json:"effective,omitempty"`
+	AgentCost PricingValues `json:"agent_cost,omitempty"`
 	Version   string        `json:"version"`
 }
 
@@ -175,33 +176,26 @@ func BuildAgentUserModelSettingsView(agentId, userId int) (AgentUserModelSetting
 		}
 		byModel[row.Model] = row
 	}
-	names := make([]string, 0, len(available))
+	configured := make([]AgentModelListItem, 0, len(available))
 	for _, item := range available {
-		names = append(names, item.ModelName)
-	}
-	snapshot, err := GetModelPricingSnapshot(names)
-	if err != nil {
-		return AgentUserModelSettingsPayload{}, nil, err
-	}
-	effectiveByName := make(map[string]ModelPricingEntry, len(snapshot.Entries))
-	for _, entry := range snapshot.Entries {
-		effectiveByName[entry.ModelName] = entry
+		if item.HasCostOverride {
+			configured = append(configured, item)
+		}
 	}
 
-	views := make([]AgentUserModelSettingView, 0, len(available))
+	views := make([]AgentUserModelSettingView, 0, len(configured))
 	limitEnabled := len(rows) > 0
-	for _, item := range available {
+	for _, item := range configured {
+		agentCost := make(PricingValues, len(item.CostEffective))
+		for key, value := range item.CostEffective {
+			agentCost[key] = value
+		}
 		view := AgentUserModelSettingView{
 			ModelName: item.ModelName,
 			Enabled:   !limitEnabled,
-			Version:   snapshot.EmptyVersion,
-		}
-		if entry, ok := effectiveByName[item.ModelName]; ok {
-			view.Effective = entry.Effective
-			view.Version = entry.Version
-			if len(entry.Configured) > 0 {
-				view.Pricing = entry.Configured
-			}
+			Effective: agentCost,
+			AgentCost: agentCost,
+			Version:   item.CostVersion,
 		}
 		if row, ok := byModel[item.ModelName]; ok && row.Enabled {
 			view.Enabled = true

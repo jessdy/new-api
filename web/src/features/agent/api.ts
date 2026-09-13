@@ -93,6 +93,7 @@ export type AgentUserModelSettingItem = {
   enabled: boolean
   pricing?: Record<string, number | string>
   effective?: Record<string, number | string>
+  agent_cost?: Record<string, number | string>
   version: string
 }
 

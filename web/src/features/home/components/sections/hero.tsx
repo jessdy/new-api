@@ -18,11 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { CherryStudio } from '@lobehub/icons'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, BookOpen } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { HeaderLogo } from '@/components/layout'
 import { Button } from '@/components/ui/button'
-import { useStatus } from '@/hooks/use-status'
+import { useSystemConfig } from '@/hooks/use-system-config'
 
 import { HeroTerminalDemo } from '../hero-terminal-demo'
 
@@ -47,37 +48,7 @@ const MoreIcon = () => (
 
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
-  const { status } = useStatus()
-  const docsUrl =
-    (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
-
-  const renderDocsButton = () => {
-    const isExternal = docsUrl.startsWith('http')
-    if (isExternal) {
-      return (
-        <Button
-          variant='outline'
-          className='group border-border/50 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-lg px-5 text-sm font-medium'
-          render={
-            <a href={docsUrl} target='_blank' rel='noopener noreferrer' />
-          }
-        >
-          <BookOpen className='text-muted-foreground/80 group-hover:text-foreground size-4 transition-colors duration-200' />
-          <span>{t('Docs')}</span>
-        </Button>
-      )
-    }
-    return (
-      <Button
-        variant='outline'
-        className='group border-border/50 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-lg px-5 text-sm font-medium'
-        render={<Link to={docsUrl} />}
-      >
-        <BookOpen className='text-muted-foreground/80 group-hover:text-foreground size-4 transition-colors duration-200' />
-        <span>{t('Docs')}</span>
-      </Button>
-    )
-  }
+  const { logo, loading, logoLoaded } = useSystemConfig()
 
   return (
     <section className='relative z-10 overflow-hidden px-6 pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-36 lg:pb-28'>
@@ -118,9 +89,19 @@ export function Hero(props: HeroProps) {
             className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
             style={{ animationDelay: '60ms' }}
           >
-            {t('Unified API Gateway for')}
-            <br />
-            <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
+            <span className='flex items-center gap-3'>
+              <span className='flex size-10 shrink-0 items-center justify-center sm:size-12'>
+                <HeaderLogo
+                  src={logo}
+                  alt={t('Logo')}
+                  loading={loading}
+                  logoLoaded={logoLoaded}
+                  className='size-full rounded-xl object-contain'
+                />
+              </span>
+              <span>{t('Unified API Gateway for')}</span>
+            </span>
+            <span className='block bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
               {t('Vast Range of AI Models')}
             </span>
           </h1>
@@ -138,16 +119,13 @@ export function Hero(props: HeroProps) {
             style={{ animationDelay: '180ms' }}
           >
             {props.isAuthenticated ? (
-              <>
-                <Button
-                  className='group h-11 rounded-lg px-5 text-sm font-medium'
-                  render={<Link to='/dashboard' />}
-                >
-                  {t('Go to Dashboard')}
-                  <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
-                </Button>
-                {renderDocsButton()}
-              </>
+              <Button
+                className='group h-11 rounded-lg px-5 text-sm font-medium'
+                render={<Link to='/dashboard' />}
+              >
+                {t('Go to Dashboard')}
+                <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
+              </Button>
             ) : (
               <>
                 <Button
@@ -164,7 +142,6 @@ export function Hero(props: HeroProps) {
                 >
                   {t('View Pricing')}
                 </Button>
-                {renderDocsButton()}
               </>
             )}
           </div>

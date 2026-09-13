@@ -21,13 +21,13 @@ import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { EmptyState } from '@/components/empty-state'
-import { ErrorState } from '@/components/error-state'
-import { LoadingState } from '@/components/loading-state'
 import {
   StaticDataTable,
   type StaticDataTableColumn,
 } from '@/components/data-table'
+import { EmptyState } from '@/components/empty-state'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,8 +50,8 @@ import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
 } from '@/features/system-settings/models/model-pricing-sheet'
-import { getLobeIcon } from '@/lib/lobe-icon'
 import { handleServerError } from '@/lib/handle-server-error'
+import { getLobeIcon } from '@/lib/lobe-icon'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -114,7 +114,7 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
     if (!detailModel) return null
     return modelPricingDisplay({
       model_name: detailModel.model_name,
-      effective: detailModel.cost_effective,
+      effective: detailModel.cost_effective ?? {},
     })
   }, [detailModel])
 
@@ -133,7 +133,9 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
             <span className='flex size-6 shrink-0 items-center justify-center'>
               {getLobeIcon(row.model_name, 24)}
             </span>
-            <span className='font-mono text-sm break-all'>{row.model_name}</span>
+            <span className='font-mono text-sm break-all'>
+              {row.model_name}
+            </span>
           </div>
         ),
       },
@@ -157,24 +159,24 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
         id: 'cost',
         header: t('Upstream cost'),
         cell: (row) => (
-            <Button
-              variant='ghost'
-              className='h-auto w-full max-w-full min-w-0 justify-start px-0 py-1 text-left font-normal hover:bg-transparent'
-              aria-label={t('View pricing for {{model}}', {
-                model: row.model_name,
+          <Button
+            variant='ghost'
+            className='h-auto w-full max-w-full min-w-0 justify-start px-0 py-1 text-left font-normal hover:bg-transparent'
+            aria-label={t('View pricing for {{model}}', {
+              model: row.model_name,
+            })}
+            onClick={() => setDetailModel(row)}
+          >
+            <ModelPriceCell
+              model={modelPricingDisplay({
+                model_name: row.model_name,
+                effective: row.cost_effective ?? {},
               })}
-              onClick={() => setDetailModel(row)}
-            >
-              <ModelPriceCell
-                model={modelPricingDisplay({
-                  model_name: row.model_name,
-                  effective: row.cost_effective,
-                })}
-                options={{ tokenUnit: 'M' }}
-                showExpression={false}
-              />
-            </Button>
-          ),
+              options={{ tokenUnit: 'M' }}
+              showExpression={false}
+            />
+          </Button>
+        ),
       },
     ],
     [t]
@@ -311,7 +313,8 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
                           .filter((item) => {
                             const value = detailPricing[item.field]
                             return (
-                              typeof value === 'number' && Number.isFinite(value)
+                              typeof value === 'number' &&
+                              Number.isFinite(value)
                             )
                           })
                           .map((item) => (
