@@ -52,6 +52,7 @@ import {
   DASHBOARD_SECTION_IDS,
 } from './section-registry'
 import type {
+  AgentChartsFilters,
   DashboardChartPreferences,
   DashboardFilters,
   QuotaDataItem,
@@ -104,6 +105,12 @@ const LazyPerformanceOverview = lazy(() =>
 const LazyUserCharts = lazy(() =>
   import('./components/users/user-charts').then((m) => ({
     default: m.UserCharts,
+  }))
+)
+
+const LazyAgentCharts = lazy(() =>
+  import('./components/models/agent-charts').then((m) => ({
+    default: m.AgentCharts,
   }))
 )
 
@@ -216,6 +223,15 @@ export function Dashboard() {
       }
     }
   )
+  const [agentChartsFilters, setAgentChartsFilters] =
+    useState<AgentChartsFilters>(() => {
+      const granularity = getSavedGranularity()
+      return {
+        timeGranularity: granularity,
+        selectedRange: getDefaultDays(granularity),
+        topAgentLimit: 10,
+      }
+    })
   const [flowSensitiveVisible, setFlowSensitiveVisible] = useState(true)
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
@@ -389,6 +405,16 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
+              {isAdmin && (
+                <FadeIn delay={0.2}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyAgentCharts
+                      filters={agentChartsFilters}
+                      onFiltersChange={setAgentChartsFilters}
+                    />
+                  </Suspense>
+                </FadeIn>
+              )}
             </>
           )}
           {activeSection === 'users' && (

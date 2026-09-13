@@ -170,6 +170,31 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 	return quotaDatas, err
 }
 
+// AgentQuotaData is dashboard aggregation of usage under each agent's channel pool.
+type AgentQuotaData struct {
+	AgentId   int    `json:"agent_id"`
+	AgentName string `json:"agent_name"`
+	CreatedAt int64  `json:"created_at"`
+	Count     int    `json:"count"`
+	Quota     int    `json:"quota"`
+	TokenUsed int    `json:"token_used"`
+}
+
+// GetQuotaDataGroupByAgent sums quota_data for users belonging to each agent,
+// restricted to channels currently selected in agent_channels (代理商渠道下用量).
+func GetQuotaDataGroupByAgent(startTime int64, endTime int64) ([]*AgentQuotaData, error) {
+	var rows []*AgentQuotaData
+	err := DB.Table("quota_data").
+		Select("agents.id as agent_id, agents.name as agent_name, quota_data.created_at as created_at, sum(quota_data.count) as count, sum(quota_data.quota) as quota, sum(quota_data.token_used) as token_used").
+		Joins("INNER JOIN users ON users.id = quota_data.user_id AND users.agent_id > 0").
+		Joins("INNER JOIN agent_channels ON agent_channels.agent_id = users.agent_id AND agent_channels.channel_id = quota_data.channel_id").
+		Joins("INNER JOIN agents ON agents.id = users.agent_id").
+		Where("quota_data.created_at >= ? AND quota_data.created_at <= ?", startTime, endTime).
+		Group("agents.id, agents.name, quota_data.created_at").
+		Find(&rows).Error
+	return rows, err
+}
+
 func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {
 	if username != "" {
 		return GetQuotaDataByUsername(username, startTime, endTime)

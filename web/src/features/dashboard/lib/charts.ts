@@ -705,9 +705,15 @@ export function processUserChartData(
   data: QuotaDataItem[],
   timeGranularity: TimeGranularity = 'day',
   t?: TFunction,
-  limit = 10
+  limit = 10,
+  titles?: {
+    rankTitle?: string
+    trendTitle?: string
+  }
 ): ProcessedUserChartData {
   const tt: TFunction = t ?? ((x) => x)
+  const rankTitle = titles?.rankTitle ?? 'User Consumption Ranking'
+  const trendTitle = titles?.trendTitle ?? 'User Consumption Trend'
   const { config } = getCurrencyDisplay()
   const quotaPerUnit = config.quotaPerUnit
 
@@ -723,7 +729,7 @@ export function processUserChartData(
       direction: 'horizontal',
       title: {
         visible: true,
-        text: tt('User Consumption Ranking'),
+        text: tt(rankTitle),
         subtext: tt('No data available'),
       },
       legends: { visible: false },
@@ -738,7 +744,7 @@ export function processUserChartData(
       seriesField: 'User',
       title: {
         visible: true,
-        text: tt('User Consumption Trend'),
+        text: tt(trendTitle),
         subtext: tt('No data available'),
       },
       legends: { visible: true, selectMode: 'single' },
@@ -822,7 +828,7 @@ export function processUserChartData(
       direction: 'horizontal',
       title: {
         visible: true,
-        text: tt('User Consumption Ranking'),
+        text: tt(rankTitle),
         subtext: `${tt('Total:')} ${formatVal(totalQuota)}`,
       },
       legends: { visible: false },
@@ -878,7 +884,7 @@ export function processUserChartData(
       stack: false,
       title: {
         visible: true,
-        text: tt('User Consumption Trend'),
+        text: tt(trendTitle),
         subtext: `${tt('Total:')} ${formatVal(totalQuota)}`,
       },
       legends: { visible: true, selectMode: 'single' },

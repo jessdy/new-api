@@ -33,6 +33,15 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+export interface AgentQuotaDataItem {
+  agent_id: number
+  agent_name: string
+  created_at: number
+  token_used?: number
+  count?: number
+  quota?: number
+}
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string
@@ -208,6 +217,12 @@ export interface UserChartsFilters {
   timeGranularity: TimeGranularity
   selectedRange: number
   topUserLimit: number
+}
+
+export interface AgentChartsFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  topAgentLimit: number
 }
 
 // ============================================================================
