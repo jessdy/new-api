@@ -160,6 +160,18 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 	return quotaDatas, err
 }
 
+// GetQuotaDataByAgentId aggregates usage from users registered under an agent.
+func GetQuotaDataByAgentId(agentId int, startTime int64, endTime int64) ([]*QuotaData, error) {
+	var quotaDatas []*QuotaData
+	err := DB.Table("quota_data").
+		Select("quota_data.model_name, quota_data.created_at, sum(quota_data.count) as count, sum(quota_data.quota) as quota, sum(quota_data.token_used) as token_used").
+		Joins("INNER JOIN users ON users.id = quota_data.user_id").
+		Where("users.agent_id = ? AND quota_data.created_at >= ? AND quota_data.created_at <= ?", agentId, startTime, endTime).
+		Group("quota_data.model_name, quota_data.created_at").
+		Find(&quotaDatas).Error
+	return quotaDatas, err
+}
+
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	err = DB.Table("quota_data").

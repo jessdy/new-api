@@ -24,7 +24,9 @@ import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { FadeIn } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -233,6 +235,7 @@ export function Dashboard() {
       }
     })
   const [flowSensitiveVisible, setFlowSensitiveVisible] = useState(true)
+  const [onlySelf, setOnlySelf] = useState(false)
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
     setModelFilters(filters)
@@ -261,6 +264,7 @@ export function Dashboard() {
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+  const isAgent = userRole === ROLE.AGENT
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
@@ -282,6 +286,18 @@ export function Dashboard() {
   const modelActions =
     activeSection === 'models' ? (
       <>
+        {isAgent ? (
+          <div className='flex items-center gap-2 rounded-md border px-2.5 py-1.5'>
+            <Switch
+              id='dashboard-only-self'
+              checked={onlySelf}
+              onCheckedChange={setOnlySelf}
+            />
+            <Label htmlFor='dashboard-only-self' className='text-xs'>
+              {t('Only count my usage')}
+            </Label>
+          </div>
+        ) : null}
         <ModelsChartPreferences
           preferences={chartPreferences}
           onPreferencesChange={handleChartPreferencesChange}
@@ -368,6 +384,7 @@ export function Dashboard() {
                 <Suspense fallback={<LogStatCardsFallback />}>
                   <LazyLogStatCards
                     filters={modelFilters}
+                    aggregateAgent={isAgent && !onlySelf}
                     onDataUpdate={handleDataUpdate}
                   />
                 </Suspense>

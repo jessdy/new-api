@@ -91,3 +91,50 @@ func TestGetQuotaDataGroupByAgent(t *testing.T) {
 	assert.Equal(t, agentA.Id, byName["agent-a"].AgentId)
 	assert.Equal(t, agentB.Id, byName["agent-b"].AgentId)
 }
+
+func TestGetQuotaDataByAgentIdAggregatesRegisteredUsersOnly(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.AutoMigrate(&QuotaData{}))
+
+	agent := &Agent{
+		UserId: 301, Name: "agent", InviteCode: "agentdata", Status: AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, DB.Create(&User{
+		Id: 301, Username: "owner", Password: "x", Role: common.RoleAgentUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "owner",
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 302, Username: "member-a", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "membera", AgentId: agent.Id,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 303, Username: "member-b", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "memberb", AgentId: agent.Id,
+	}).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID: 301, Username: "owner", ModelName: "gpt-4", CreatedAt: 1000, Count: 9, Quota: 900, TokenUsed: 90,
+	}).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID: 302, Username: "member-a", ModelName: "gpt-4", CreatedAt: 1000, Count: 2, Quota: 100, TokenUsed: 40,
+	}).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID: 303, Username: "member-b", ModelName: "gpt-4", CreatedAt: 1000, Count: 3, Quota: 150, TokenUsed: 60,
+	}).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID: 302, Username: "member-a", ModelName: "claude-3", CreatedAt: 1000, Count: 1, Quota: 80, TokenUsed: 20,
+	}).Error)
+
+	rows, err := GetQuotaDataByAgentId(agent.Id, 900, 2000)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	byModel := make(map[string]*QuotaData, len(rows))
+	for _, row := range rows {
+		byModel[row.ModelName] = row
+	}
+	assert.Equal(t, 250, byModel["gpt-4"].Quota)
+	assert.Equal(t, 5, byModel["gpt-4"].Count)
+	assert.Equal(t, 100, byModel["gpt-4"].TokenUsed)
+	assert.Equal(t, 80, byModel["claude-3"].Quota)
+}

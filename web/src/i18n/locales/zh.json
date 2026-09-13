@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "仅精确匹配可用",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "只有配置过的组合才会被覆盖，其余调用仍使用计费分组的基础倍率。",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "只有已配置的组合会被覆盖，其他调用仍使用令牌分组的基础倍率。",
+    "Only count my usage": "仅统计自己",
     "Only enabled parameters are sent with the request.": "只有启用的参数会随请求发送。",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "只填写站点根域名，例如 https://api.example.com。不要填写 /api/user/epay/notify 这类路径。留空则使用服务器地址。",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "仅从所有启用及停用的渠道中移除名称完全相同的模型，不扩展匹配规则，渠道本身会保留。",

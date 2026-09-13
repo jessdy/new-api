@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "完全一致のみ",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "設定された組み合わせだけが上書きされます。それ以外の呼び出しは課金グループの基本倍率のままです。",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "設定済みの組み合わせだけが上書きされます。他の呼び出しはトークングループの基本倍率を維持します。",
+    "Only count my usage": "自分の利用分のみ集計",
     "Only enabled parameters are sent with the request.": "有効なパラメータだけがリクエストに送信されます。",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "サイトのオリジンのみを入力してください。例: https://api.example.com。/api/user/epay/notify などのパスは含めないでください。空欄の場合はサーバーアドレスを使用します。",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "有効・無効を問わず、すべてのチャネルから完全に一致するモデル名のみを削除します。マッチングルールは展開せず、チャネル自体は保持します。",

@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "Chỉ dùng cho khớp chính xác",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Chỉ các tổ hợp đã cấu hình mới bị ghi đè. Các cuộc gọi khác vẫn dùng hệ số cơ bản của nhóm tính phí.",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "Chỉ các tổ hợp đã cấu hình mới bị ghi đè. Các lệnh gọi khác giữ tỷ lệ cơ bản của nhóm token.",
+    "Only count my usage": "Chỉ thống kê mức sử dụng của tôi",
     "Only enabled parameters are sent with the request.": "Chỉ các tham số đã bật mới được gửi trong yêu cầu.",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "Chỉ nhập origin của trang, ví dụ https://api.example.com. Không nhập đường dẫn như /api/user/epay/notify. Để trống để dùng địa chỉ máy chủ.",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "Chỉ xóa tên mô hình khớp chính xác khỏi các kênh đang bật và đã tắt. Không mở rộng quy tắc so khớp và vẫn giữ lại các kênh.",

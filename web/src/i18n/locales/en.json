@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "Only available for exact matching",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Only configured combinations are overridden. All other calls keep the billing group base ratio.",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "Only configured combinations are overridden. All other calls keep the token group base ratio.",
+    "Only count my usage": "Only count my usage",
     "Only enabled parameters are sent with the request.": "Only enabled parameters are sent with the request.",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.",

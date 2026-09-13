@@ -42,9 +42,15 @@ export async function getUserQuotaDates(
     default_time?: string
     username?: string
   },
-  isAdmin = false
+  isAdmin = false,
+  aggregateAgent = false
 ) {
-  const endpoint = isAdmin ? '/api/data' : '/api/data/self'
+  let endpoint = '/api/data/self'
+  if (isAdmin) {
+    endpoint = '/api/data'
+  } else if (aggregateAgent) {
+    endpoint = '/api/data/agent'
+  }
   const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
     endpoint,
     { params }

@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "Только при точном совпадении",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Переопределяются только настроенные комбинации. Остальные вызовы используют базовый коэффициент тарифной группы.",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "Переопределяются только настроенные комбинации. Остальные вызовы используют базовый коэффициент группы токена.",
+    "Only count my usage": "Учитывать только моё использование",
     "Only enabled parameters are sent with the request.": "С запросом отправляются только включенные параметры.",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "Введите только origin сайта, например https://api.example.com. Не добавляйте пути, например /api/user/epay/notify. Оставьте пустым, чтобы использовать адрес сервера.",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "Из активных и отключённых каналов удаляются только полностью совпадающие имена моделей. Правила сопоставления не расширяются, сами каналы сохраняются.",

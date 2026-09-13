@@ -3714,6 +3714,7 @@
     "Only available for exact matching": "Uniquement pour une correspondance exacte",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Seules les combinaisons configurées sont remplacées. Tous les autres appels gardent le taux de base du groupe de facturation.",
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "Seules les combinaisons configurées sont remplacées. Les autres appels conservent le ratio de base du groupe du jeton.",
+    "Only count my usage": "Compter uniquement mon utilisation",
     "Only enabled parameters are sent with the request.": "Seuls les paramètres activés sont envoyés avec la requête.",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "Saisissez uniquement l’origine du site, par exemple https://api.example.com. N’ajoutez aucun chemin comme /api/user/epay/notify. Laissez vide pour utiliser l’adresse du serveur.",
     "Only exact model names are removed from enabled and disabled channels. Matching rules are not expanded, and channel records are retained.": "Seuls les noms de modèle identiques sont retirés des canaux actifs et désactivés. Les règles de correspondance ne sont pas étendues et les canaux sont conservés.",
