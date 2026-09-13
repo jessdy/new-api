@@ -374,6 +374,7 @@ func migrateDB() error {
 		&AgentChannel{},
 		&AgentGroup{},
 		&AgentModelPrice{},
+		&AgentUserModelSetting{},
 		&AgentSettlementBill{},
 	)
 	if err != nil {

@@ -156,6 +156,56 @@ func AgentListModelPrices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": prices})
 }
 
+func AgentListModels(c *gin.Context) {
+	agent, ok := middleware.GetCurrentAgent(c)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
+		return
+	}
+	items, err := model.ListAgentModels(agent.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+}
+
+type upsertAgentModelCostRequest struct {
+	Model     string  `json:"model"`
+	CostRatio float64 `json:"cost_ratio"`
+}
+
+func AgentUpsertModelCost(c *gin.Context) {
+	agent, ok := middleware.GetCurrentAgent(c)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
+		return
+	}
+	if c.GetInt("role") < common.RoleAdminUser {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+		})
+		return
+	}
+	var req upsertAgentModelCostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.UpsertAgentModelCost(agent.Id, req.Model, req.CostRatio); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"model":      strings.TrimSpace(req.Model),
+			"cost_ratio": req.CostRatio,
+		},
+	})
+}
+
 func AgentUpsertModelPrice(c *gin.Context) {
 	agent, ok := middleware.GetCurrentAgent(c)
 	if !ok {
@@ -303,6 +353,83 @@ func AgentAdjustUserQuota(c *gin.Context) {
 	adjustManagedUserQuota(c, userId, req.Mode, req.Value, model.AuditFields{
 		"agent_id": agent.Id,
 	})
+}
+
+func agentOwnedUser(c *gin.Context) (*model.Agent, *model.User, bool) {
+	agent, ok := middleware.GetCurrentAgent(c)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
+		return nil, nil, false
+	}
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userId <= 0 {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid user id"})
+		return nil, nil, false
+	}
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil || user.AgentId != agent.Id {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user not found"})
+		return nil, nil, false
+	}
+	return agent, user, true
+}
+
+func AgentGetUserModelSettings(c *gin.Context) {
+	agent, user, ok := agentOwnedUser(c)
+	if !ok {
+		return
+	}
+	payload, views, err := model.BuildAgentUserModelSettingsView(agent.Id, user.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"limit_enabled": payload.LimitEnabled,
+			"models":        views,
+		},
+	})
+}
+
+func AgentReplaceUserModelSettings(c *gin.Context) {
+	agent, user, ok := agentOwnedUser(c)
+	if !ok {
+		return
+	}
+	var req model.AgentUserModelSettingsPayload
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	available, err := model.ListAgentModels(agent.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	allowed := make(map[string]struct{}, len(available))
+	for _, item := range available {
+		allowed[item.ModelName] = struct{}{}
+	}
+	for _, item := range req.Models {
+		name := strings.TrimSpace(item.ModelName)
+		if name == "" || !item.Enabled {
+			continue
+		}
+		if _, ok := allowed[name]; !ok {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "model is not available under agent channels: " + name,
+			})
+			return
+		}
+	}
+	if err := model.ReplaceAgentUserModelSettings(agent.Id, user.Id, req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 
 func middlewareAgentOwnsGroup(agentId int, name string) bool {

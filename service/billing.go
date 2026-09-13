@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
@@ -116,6 +117,17 @@ func accrueAgentSettlement(relayInfo *relaycommon.RelayInfo, actualQuota int) {
 		}
 		if platformQuota <= 0 {
 			platformQuota = actualQuota
+		}
+	}
+	modelName := relayInfo.GetBillingModelName()
+	if modelName == "" {
+		modelName = relayInfo.OriginModelName
+	}
+	if costRatio, ok := model.GetAgentModelCostRatio(relayInfo.AgentId, modelName); ok && costRatio != 1 {
+		q, clamp := common.QuotaFromFloatChecked(float64(platformQuota) * costRatio)
+		platformQuota = q
+		if clamp != nil {
+			common.SysError(fmt.Sprintf("agent cost ratio quota clamp agent=%d model=%s: %s", relayInfo.AgentId, modelName, clamp.Error()))
 		}
 	}
 	relayInfo.PlatformQuota = platformQuota

@@ -98,6 +98,19 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 
+			if agentId := common.GetContextKeyInt(c, constant.ContextKeyUserAgentId); agentId > 0 {
+				userId := c.GetInt("id")
+				allowed, err := model.AgentUserAllowsModel(userId, modelRequest.Model)
+				if err != nil {
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, err.Error())
+					return
+				}
+				if !allowed {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					return
+				}
+			}
+
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))

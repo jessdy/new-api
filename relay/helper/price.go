@@ -85,14 +85,23 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 			groupRatioInfo.GroupRatio = 1
 		}
 		discount := 1.0
-		modelName := relayInfo.GetBillingModelName()
-		if modelName == "" {
-			modelName = relayInfo.OriginModelName
+		modelName := ""
+		userId := 0
+		if relayInfo != nil {
+			modelName = relayInfo.GetBillingModelName()
+			if modelName == "" {
+				modelName = relayInfo.OriginModelName
+			}
+			userId = relayInfo.UserId
 		}
 		if d, ok := model.GetAgentModelDiscount(agentId, modelName); ok {
-			discount = d
+			if _, hasUserPricing := model.GetAgentUserModelPricing(userId, modelName); !hasUserPricing {
+				discount = d
+			}
 		}
-		relayInfo.AgentDiscountRatio = discount
+		if relayInfo != nil {
+			relayInfo.AgentDiscountRatio = discount
+		}
 		groupRatioInfo.GroupRatio = groupRatioInfo.GroupRatio * discount
 		return groupRatioInfo
 	}
@@ -120,11 +129,21 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 	billingModelName := info.GetBillingModelName()
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
+	userPricing, hasUserPricing := model.GetAgentUserModelPricing(info.UserId, billingModelName)
+	if hasUserPricing {
+		if price, ok := userPricingFloat(userPricing, "ModelPrice"); ok {
+			modelPrice = price
+			usePrice = true
+		} else if _, hasRatio := userPricingFloat(userPricing, "ModelRatio"); hasRatio {
+			usePrice = false
+		}
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	// Check if this model uses tiered_expr billing
-	if billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr {
+	// Check if this model uses tiered_expr billing (user override forces ratio/price modes above)
+	if billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr &&
+		!(hasUserPricing && (userPricingHas(userPricing, "ModelPrice") || userPricingHas(userPricing, "ModelRatio"))) {
 		return modelPriceHelperTiered(c, info, billingModelName, promptTokens, meta, groupRatioInfo)
 	}
 
@@ -147,6 +166,13 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(billingModelName)
+		if hasUserPricing {
+			if ratio, ok := userPricingFloat(userPricing, "ModelRatio"); ok {
+				modelRatio = ratio
+				success = true
+				matchName = billingModelName
+			}
+		}
 		if !success {
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
@@ -159,12 +185,32 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		completionRatio = ratio_setting.GetCompletionRatio(billingModelName)
 		cacheRatio, _ = ratio_setting.GetCacheRatio(billingModelName)
 		cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(billingModelName)
-		cacheCreationRatio5m = cacheCreationRatio
-		// 固定1h和5min缓存写入价格的比例
-		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
 		imageRatio, _ = ratio_setting.GetImageRatio(billingModelName)
 		audioRatio = ratio_setting.GetAudioRatio(billingModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(billingModelName)
+		if hasUserPricing {
+			if v, ok := userPricingFloat(userPricing, "CompletionRatio"); ok {
+				completionRatio = v
+			}
+			if v, ok := userPricingFloat(userPricing, "CacheRatio"); ok {
+				cacheRatio = v
+			}
+			if v, ok := userPricingFloat(userPricing, "CreateCacheRatio"); ok {
+				cacheCreationRatio = v
+			}
+			if v, ok := userPricingFloat(userPricing, "ImageRatio"); ok {
+				imageRatio = v
+			}
+			if v, ok := userPricingFloat(userPricing, "AudioRatio"); ok {
+				audioRatio = v
+			}
+			if v, ok := userPricingFloat(userPricing, "AudioCompletionRatio"); ok {
+				audioCompletionRatio = v
+			}
+		}
+		cacheCreationRatio5m = cacheCreationRatio
+		// 固定1h和5min缓存写入价格的比例
+		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(float64(preConsumedTokens) * ratio)
 		if err != nil {
@@ -431,4 +477,34 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 
 	info.PriceData = priceData
 	return priceData, nil
+}
+
+func userPricingHas(pricing model.PricingValues, key string) bool {
+	if pricing == nil {
+		return false
+	}
+	_, ok := pricing[key]
+	return ok
+}
+
+func userPricingFloat(pricing model.PricingValues, key string) (float64, bool) {
+	if pricing == nil {
+		return 0, false
+	}
+	raw, ok := pricing[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch v := raw.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	default:
+		return 0, false
+	}
 }

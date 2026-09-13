@@ -75,6 +75,29 @@ export type AgentModelPrice = {
   agent_id?: number
   model: string
   discount_ratio: number
+  cost_ratio?: number
+}
+
+export type AgentModelListItem = {
+  model_name: string
+  channel_ids: number[]
+  channel_names: string[]
+  cost_ratio: number
+  has_cost_override: boolean
+  discount_ratio: number
+}
+
+export type AgentUserModelSettingItem = {
+  model_name: string
+  enabled: boolean
+  pricing?: Record<string, number | string>
+  effective?: Record<string, number | string>
+  version: string
+}
+
+export type AgentUserModelSettings = {
+  limit_enabled: boolean
+  models: AgentUserModelSettingItem[]
 }
 
 export type AgentMemberRole = 'user' | 'sales'
@@ -182,6 +205,26 @@ export async function listAgentModelPrices(
   return res.data.data ?? []
 }
 
+export async function listAgentModels(
+  agentId?: number
+): Promise<AgentModelListItem[]> {
+  const res = await api.get('/api/agent/models', {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+  return res.data.data ?? []
+}
+
+export async function upsertAgentModelCost(
+  payload: { model: string; cost_ratio: number },
+  agentId?: number
+): Promise<void> {
+  const res = await api.put('/api/agent/models/cost', payload, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+}
+
 export async function upsertAgentModelPrice(
   price: AgentModelPrice,
   agentId?: number
@@ -230,6 +273,35 @@ export async function adjustAgentUserQuota(
   })
   requireServerSuccess(res.data)
   return res.data as { success: boolean; message?: string }
+}
+
+export async function getAgentUserModelSettings(
+  userId: number,
+  agentId?: number
+): Promise<AgentUserModelSettings> {
+  const res = await api.get(`/api/agent/users/${userId}/models`, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+  return res.data.data
+}
+
+export async function replaceAgentUserModelSettings(
+  userId: number,
+  payload: {
+    limit_enabled: boolean
+    models: Array<{
+      model_name: string
+      enabled: boolean
+      pricing?: Record<string, number | string>
+    }>
+  },
+  agentId?: number
+): Promise<void> {
+  const res = await api.put(`/api/agent/users/${userId}/models`, payload, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
 }
 
 export async function getAgentPaymentConfig(

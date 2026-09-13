@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,8 +64,19 @@ type AgentGroup struct {
 type AgentModelPrice struct {
 	AgentId       int     `json:"agent_id" gorm:"primaryKey;autoIncrement:false"`
 	Model         string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
-	DiscountRatio float64 `json:"discount_ratio" gorm:"type:decimal(16,8);not null;default:1"`
+	DiscountRatio float64 `json:"discount_ratio" gorm:"type:decimal(16,8);not null;default:1"` // retail multiplier for end users
+	CostRatio     float64 `json:"cost_ratio" gorm:"type:decimal(16,8);not null;default:1"`     // platform→agent settlement / upstream cost
 	UpdatedAt     int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+}
+
+// AgentModelListItem is one model available through the agent's selected channels.
+type AgentModelListItem struct {
+	ModelName       string   `json:"model_name"`
+	ChannelIds      []int    `json:"channel_ids"`
+	ChannelNames    []string `json:"channel_names"`
+	CostRatio       float64  `json:"cost_ratio"`
+	HasCostOverride bool     `json:"has_cost_override"`
+	DiscountRatio   float64  `json:"discount_ratio"`
 }
 
 type AgentSettlementBill struct {
@@ -523,6 +535,18 @@ func GetAgentModelDiscount(agentId int, modelName string) (float64, bool) {
 	return price.DiscountRatio, true
 }
 
+func GetAgentModelCostRatio(agentId int, modelName string) (float64, bool) {
+	if agentId <= 0 || modelName == "" {
+		return 1, false
+	}
+	var price AgentModelPrice
+	err := DB.Where("agent_id = ? AND model = ?", agentId, modelName).First(&price).Error
+	if err != nil || price.CostRatio <= 0 {
+		return 1, false
+	}
+	return price.CostRatio, true
+}
+
 func UpsertAgentModelPrice(price *AgentModelPrice) error {
 	if price == nil {
 		return errors.New("agent model price is nil")
@@ -534,14 +558,118 @@ func UpsertAgentModelPrice(price *AgentModelPrice) error {
 	if price.DiscountRatio <= 0 {
 		return errors.New("discount ratio must be positive")
 	}
+	if price.CostRatio <= 0 {
+		price.CostRatio = 1
+	}
 	return DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "agent_id"}, {Name: "model"}},
 		DoUpdates: clause.AssignmentColumns([]string{"discount_ratio", "updated_at"}),
 	}).Create(price).Error
 }
 
+// UpsertAgentModelCost sets the platform→agent settlement cost ratio for a model.
+func UpsertAgentModelCost(agentId int, modelName string, costRatio float64) error {
+	modelName = strings.TrimSpace(modelName)
+	if agentId <= 0 {
+		return errors.New("agent id is required")
+	}
+	if modelName == "" {
+		return errors.New("model is required")
+	}
+	if costRatio <= 0 {
+		return errors.New("cost ratio must be positive")
+	}
+	price := &AgentModelPrice{
+		AgentId:       agentId,
+		Model:         modelName,
+		DiscountRatio: 1,
+		CostRatio:     costRatio,
+	}
+	return DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "agent_id"}, {Name: "model"}},
+		DoUpdates: clause.AssignmentColumns([]string{"cost_ratio", "updated_at"}),
+	}).Create(price).Error
+}
+
 func DeleteAgentModelPrice(agentId int, modelName string) error {
 	return DB.Where("agent_id = ? AND model = ?", agentId, modelName).Delete(&AgentModelPrice{}).Error
+}
+
+// ListAgentModels returns distinct models from the agent's selected channels,
+// merged with any stored cost/discount overrides.
+func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
+	if agentId <= 0 {
+		return nil, errors.New("agent id is required")
+	}
+	channelIds, err := ListAgentChannelIds(agentId)
+	if err != nil {
+		return nil, err
+	}
+	type modelAgg struct {
+		channelIds   []int
+		channelNames []string
+	}
+	byModel := make(map[string]*modelAgg)
+	for _, channelId := range channelIds {
+		ch, err := GetChannelById(channelId, false)
+		if err != nil || ch == nil {
+			continue
+		}
+		for _, modelName := range ch.GetModels() {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			agg := byModel[modelName]
+			if agg == nil {
+				agg = &modelAgg{}
+				byModel[modelName] = agg
+			}
+			agg.channelIds = append(agg.channelIds, ch.Id)
+			agg.channelNames = append(agg.channelNames, ch.Name)
+		}
+	}
+	prices, err := ListAgentModelPrices(agentId)
+	if err != nil {
+		return nil, err
+	}
+	priceByModel := make(map[string]*AgentModelPrice, len(prices))
+	for _, price := range prices {
+		if price == nil {
+			continue
+		}
+		priceByModel[price.Model] = price
+		if _, ok := byModel[price.Model]; !ok {
+			byModel[price.Model] = &modelAgg{}
+		}
+	}
+	names := make([]string, 0, len(byModel))
+	for name := range byModel {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	items := make([]AgentModelListItem, 0, len(names))
+	for _, name := range names {
+		agg := byModel[name]
+		item := AgentModelListItem{
+			ModelName:     name,
+			ChannelIds:    agg.channelIds,
+			ChannelNames:  agg.channelNames,
+			CostRatio:     1,
+			DiscountRatio: 1,
+		}
+		if price, ok := priceByModel[name]; ok {
+			if price.CostRatio > 0 {
+				item.CostRatio = price.CostRatio
+			}
+			item.HasCostOverride = price.CostRatio > 0 && price.CostRatio != 1
+			if price.DiscountRatio > 0 {
+				item.DiscountRatio = price.DiscountRatio
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 func AccrueAgentSettlementDebt(agentId int, platformQuota int64) error {

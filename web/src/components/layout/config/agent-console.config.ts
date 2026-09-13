@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 import {
+  Box,
   CreditCard,
   Radio,
   Receipt,
@@ -31,6 +32,7 @@ import type { NavGroup, SidebarView } from '../types'
 
 const AGENT_SECTION_ICONS = {
   channels: Radio,
+  models: Box,
   pricing: Tags,
   users: Users,
   payment: CreditCard,
@@ -54,9 +56,9 @@ function getAgentConsoleNavGroups(t: TFunction): NavGroup[] {
 /**
  * Nested sidebar view for `/agent/*`.
  *
- * Replaces the root navigation with Channels / Pricing / Users / Payment /
- * Settlement so both reseller accounts and admins managing a specific agent
- * get the same secondary menu.
+ * Replaces the root navigation with Channels / Models / Pricing / Users /
+ * Payment / Settlement so both reseller accounts and admins managing a
+ * specific agent get the same secondary menu.
  */
 export const AGENT_CONSOLE_VIEW: SidebarView = {
   id: 'agent-console',

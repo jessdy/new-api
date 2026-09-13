@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export const AGENT_SECTIONS = [
   { id: 'channels', titleKey: 'Channels' },
+  { id: 'models', titleKey: 'Models' },
   { id: 'pricing', titleKey: 'Pricing' },
   { id: 'users', titleKey: 'Users' },
   { id: 'payment', titleKey: 'Payment' },

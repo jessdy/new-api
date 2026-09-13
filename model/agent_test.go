@@ -26,6 +26,7 @@ func newAgentTestDB(t *testing.T) *gorm.DB {
 		&AgentChannel{},
 		&AgentGroup{},
 		&AgentModelPrice{},
+		&AgentUserModelSetting{},
 		&AgentSettlementBill{},
 		&User{},
 		&Channel{},
@@ -60,6 +61,14 @@ func TestAgentChannelSelectionAndPricing(t *testing.T) {
 		DiscountRatio: 1.2,
 	}))
 	discount, ok := GetAgentModelDiscount(agent.Id, "gpt-4")
+	require.True(t, ok)
+	assert.Equal(t, 1.2, discount)
+
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", 0.8))
+	cost, ok := GetAgentModelCostRatio(agent.Id, "gpt-4")
+	require.True(t, ok)
+	assert.Equal(t, 0.8, cost)
+	discount, ok = GetAgentModelDiscount(agent.Id, "gpt-4")
 	require.True(t, ok)
 	assert.Equal(t, 1.2, discount)
 
@@ -403,4 +412,93 @@ func TestReplaceAgentGroupPricingBecomesUserPricing(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, vip.Selectable)
 	assert.Equal(t, "VIP", vip.Description)
+}
+
+func TestListAgentModelsMergesChannelsAndCost(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.Create(&Channel{
+		Id: 1, Name: "east", Key: "k1", Models: "gpt-4,claude-3", Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, DB.Create(&Channel{
+		Id: 2, Name: "west", Key: "k2", Models: "gpt-4,gemini", Status: common.ChannelStatusEnabled,
+	}).Error)
+
+	agent := &Agent{
+		UserId:     31,
+		Name:       "models-agent",
+		InviteCode: "modelsag",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{1, 2}))
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", 0.75))
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "legacy-only", 1.1))
+
+	items, err := ListAgentModels(agent.Id)
+	require.NoError(t, err)
+	byName := map[string]AgentModelListItem{}
+	for _, item := range items {
+		byName[item.ModelName] = item
+	}
+	require.Contains(t, byName, "gpt-4")
+	require.Contains(t, byName, "claude-3")
+	require.Contains(t, byName, "gemini")
+	require.Contains(t, byName, "legacy-only")
+	assert.Equal(t, 0.75, byName["gpt-4"].CostRatio)
+	assert.True(t, byName["gpt-4"].HasCostOverride)
+	assert.ElementsMatch(t, []string{"east", "west"}, byName["gpt-4"].ChannelNames)
+	assert.Equal(t, 1.0, byName["claude-3"].CostRatio)
+	assert.False(t, byName["claude-3"].HasCostOverride)
+	assert.Equal(t, 1.1, byName["legacy-only"].CostRatio)
+}
+
+func TestReplaceAgentUserModelSettings(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.Create(&Channel{
+		Id: 1, Name: "east", Key: "k1", Models: "gpt-4,claude-3", Status: common.ChannelStatusEnabled,
+	}).Error)
+	agent := &Agent{
+		UserId: 41, Name: "user-models", InviteCode: "usermod", Status: AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{1}))
+	require.NoError(t, DB.Create(&User{
+		Id: 501, Username: "cust", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "c1", AgentId: agent.Id,
+	}).Error)
+
+	require.NoError(t, ReplaceAgentUserModelSettings(agent.Id, 501, AgentUserModelSettingsPayload{
+		LimitEnabled: true,
+		Models: []AgentUserModelSettingInput{
+			{
+				ModelName: "gpt-4",
+				Enabled:   true,
+				Pricing:   PricingValues{"ModelRatio": 2.5, "CompletionRatio": 2},
+			},
+			{ModelName: "claude-3", Enabled: false},
+		},
+	}))
+
+	limited, err := AgentUserHasModelLimit(501)
+	require.NoError(t, err)
+	assert.True(t, limited)
+	allowed, err := AgentUserAllowsModel(501, "gpt-4")
+	require.NoError(t, err)
+	assert.True(t, allowed)
+	allowed, err = AgentUserAllowsModel(501, "claude-3")
+	require.NoError(t, err)
+	assert.False(t, allowed)
+	pricing, ok := GetAgentUserModelPricing(501, "gpt-4")
+	require.True(t, ok)
+	assert.Equal(t, 2.5, pricing["ModelRatio"])
+
+	require.NoError(t, ReplaceAgentUserModelSettings(agent.Id, 501, AgentUserModelSettingsPayload{
+		LimitEnabled: false,
+	}))
+	limited, err = AgentUserHasModelLimit(501)
+	require.NoError(t, err)
+	assert.False(t, limited)
+	allowed, err = AgentUserAllowsModel(501, "claude-3")
+	require.NoError(t, err)
+	assert.True(t, allowed)
 }

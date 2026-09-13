@@ -649,10 +649,31 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = []string{group}
 		}
 	}
+	models := service.GetGroupsEnabledModels(groupsToQuery)
+	if user.AgentId > 0 {
+		if limited, err := model.AgentUserHasModelLimit(user.Id); err == nil && limited {
+			allowed, err := model.ListEnabledAgentUserModels(user.Id)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			allowSet := make(map[string]struct{}, len(allowed))
+			for _, name := range allowed {
+				allowSet[name] = struct{}{}
+			}
+			filtered := make([]string, 0, len(models))
+			for _, name := range models {
+				if _, ok := allowSet[name]; ok {
+					filtered = append(filtered, name)
+				}
+			}
+			models = filtered
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
+		"data":    models,
 	})
 }
 

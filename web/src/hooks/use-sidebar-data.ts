@@ -133,6 +133,7 @@ export function useSidebarData(): SidebarData {
             activeUrls: [
               '/agent',
               '/agent/channels',
+              '/agent/models',
               '/agent/pricing',
               '/agent/users',
               '/agent/payment',

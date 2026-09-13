@@ -118,8 +118,9 @@ it('lets an agent mark an invited user as sales', async () => {
   renderPanel()
 
   expect(await screen.findByText('End user')).toBeInTheDocument()
-  expect(screen.getByText(/Invited by/)).toBeInTheDocument()
+  expect(screen.getByText('reseller')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Adjust Quota' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Model Settings' })).toBeEnabled()
   await userEvent.click(screen.getByRole('button', { name: 'Mark as sales' }))
   expect(update).toHaveBeenCalledWith(12, { agent_member_role: 'sales' }, undefined)
 })

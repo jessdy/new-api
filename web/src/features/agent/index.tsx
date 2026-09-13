@@ -39,6 +39,7 @@ import {
 } from './api'
 import { AgentPaymentPanel } from './components/agent-payment-panel'
 import { AgentPricingPanel } from './components/agent-pricing-panel'
+import { AgentModelsPanel } from './components/agent-models-panel'
 import { AgentUsersPanel } from './components/agent-users-panel'
 import {
   AGENT_DEFAULT_SECTION,
@@ -98,7 +99,7 @@ export function AgentConsole() {
                       }
                     )
                   : t(
-                      'Manage channels, pricing, users, and payment for your reseller account.'
+                      'Manage channels, models, pricing, users, and payment for your reseller account.'
                     )}
               </p>
               {selfQuery.data?.invite_code ? (
@@ -125,6 +126,9 @@ export function AgentConsole() {
                   queryClient.invalidateQueries({ queryKey: ['agent'] })
                 }
               />
+            ) : null}
+            {section === 'models' ? (
+              <AgentModelsPanel agentId={agentId} />
             ) : null}
             {section === 'pricing' ? (
               <AgentPricingPanel agentId={agentId} />

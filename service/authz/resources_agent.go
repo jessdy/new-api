@@ -4,6 +4,7 @@ const (
 	ResourceAgentUser       = "agent_user"
 	ResourceAgentChannel    = "agent_channel"
 	ResourceAgentPricing    = "agent_pricing"
+	ResourceAgentModelCost  = "agent_model_cost"
 	ResourceAgentPayment    = "agent_payment"
 	ResourceAgentSettlement = "agent_settlement"
 )
@@ -15,6 +16,8 @@ var (
 	AgentChannelWrite   = Permission{Resource: ResourceAgentChannel, Action: ActionWrite}
 	AgentPricingRead    = Permission{Resource: ResourceAgentPricing, Action: ActionRead}
 	AgentPricingWrite   = Permission{Resource: ResourceAgentPricing, Action: ActionWrite}
+	AgentModelCostRead  = Permission{Resource: ResourceAgentModelCost, Action: ActionRead}
+	AgentModelCostWrite = Permission{Resource: ResourceAgentModelCost, Action: ActionWrite}
 	AgentPaymentRead    = Permission{Resource: ResourceAgentPayment, Action: ActionRead}
 	AgentPaymentWrite   = Permission{Resource: ResourceAgentPayment, Action: ActionWrite}
 	AgentSettlementRead = Permission{Resource: ResourceAgentSettlement, Action: ActionRead}
@@ -72,6 +75,24 @@ func init() {
 				LabelKey:       "Edit agent pricing",
 				DescriptionKey: "Configure agent group ratios and model discount prices.",
 				DefaultRoles:   []string{BuiltInRoleAgent, BuiltInRoleAdmin},
+			},
+		},
+	})
+	RegisterResource(ResourceDefinition{
+		Resource: ResourceAgentModelCost,
+		LabelKey: "Agent Model Cost",
+		Actions: []ActionDefinition{
+			{
+				Action:         ActionRead,
+				LabelKey:       "Read agent model cost",
+				DescriptionKey: "View models available under the agent's channels and their upstream cost ratios.",
+				DefaultRoles:   []string{BuiltInRoleAgent, BuiltInRoleAdmin},
+			},
+			{
+				Action:         ActionWrite,
+				LabelKey:       "Edit agent model cost",
+				DescriptionKey: "Set platform-to-agent upstream cost ratios for models. Administrators only.",
+				DefaultRoles:   []string{BuiltInRoleAdmin},
 			},
 		},
 	})
