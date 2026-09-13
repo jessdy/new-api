@@ -85,6 +85,7 @@ export type AgentModelListItem = {
   cost_ratio: number
   has_cost_override: boolean
   discount_ratio: number
+  effective?: Record<string, number | string>
 }
 
 export type AgentUserModelSettingItem = {

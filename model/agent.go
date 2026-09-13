@@ -71,12 +71,13 @@ type AgentModelPrice struct {
 
 // AgentModelListItem is one model available through the agent's selected channels.
 type AgentModelListItem struct {
-	ModelName       string   `json:"model_name"`
-	ChannelIds      []int    `json:"channel_ids"`
-	ChannelNames    []string `json:"channel_names"`
-	CostRatio       float64  `json:"cost_ratio"`
-	HasCostOverride bool     `json:"has_cost_override"`
-	DiscountRatio   float64  `json:"discount_ratio"`
+	ModelName       string        `json:"model_name"`
+	ChannelIds      []int         `json:"channel_ids"`
+	ChannelNames    []string      `json:"channel_names"`
+	CostRatio       float64       `json:"cost_ratio"`
+	HasCostOverride bool          `json:"has_cost_override"`
+	DiscountRatio   float64       `json:"discount_ratio"`
+	Effective       PricingValues `json:"effective,omitempty"`
 }
 
 type AgentSettlementBill struct {
@@ -648,6 +649,14 @@ func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
 		names = append(names, name)
 	}
 	slices.Sort(names)
+	snapshot, snapshotErr := GetModelPricingSnapshot(names)
+	effectiveByName := make(map[string]PricingValues)
+	if snapshotErr == nil && snapshot != nil {
+		effectiveByName = make(map[string]PricingValues, len(snapshot.Entries))
+		for _, entry := range snapshot.Entries {
+			effectiveByName[entry.ModelName] = entry.Effective
+		}
+	}
 	items := make([]AgentModelListItem, 0, len(names))
 	for _, name := range names {
 		agg := byModel[name]
@@ -657,6 +666,7 @@ func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
 			ChannelNames:  agg.channelNames,
 			CostRatio:     1,
 			DiscountRatio: 1,
+			Effective:     effectiveByName[name],
 		}
 		if price, ok := priceByModel[name]; ok {
 			if price.CostRatio > 0 {
