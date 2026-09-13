@@ -128,6 +128,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 	}
 	billingModelName := info.GetBillingModelName()
+	if err := prepareAgentCostPricing(c, info, billingModelName, promptTokens, meta); err != nil {
+		return hosttypes.PriceData{}, err
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
 	userPricing, hasUserPricing := model.GetAgentUserModelPricing(info.UserId, billingModelName)
 	if hasUserPricing {
@@ -507,4 +510,125 @@ func userPricingFloat(pricing model.PricingValues, key string) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func prepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
+	if info == nil || info.AgentId <= 0 {
+		return nil
+	}
+	pricing, ok := model.GetAgentModelCostPricing(info.AgentId, modelName)
+	if !ok && info.OriginModelName != modelName {
+		pricing, ok = model.GetAgentModelCostPricing(info.AgentId, info.OriginModelName)
+		if ok {
+			modelName = info.OriginModelName
+		}
+	}
+	if !ok {
+		return nil
+	}
+
+	mode, _ := pricing["billing_setting.billing_mode"].(string)
+	if mode == billing_setting.BillingModeTieredExpr {
+		expr, ok := pricing["billing_setting.billing_expr"].(string)
+		if !ok || strings.TrimSpace(expr) == "" {
+			return fmt.Errorf("agent cost for model %s has no billing expression", modelName)
+		}
+		if info.RelayFormat == types.RelayFormatOpenAIRealtime && billingexpr.UsesFixedPricing(expr) {
+			return fmt.Errorf("fixed pricing is not supported for Realtime requests")
+		}
+		requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+		if err != nil {
+			return err
+		}
+		estimatedCompletionTokens := 0
+		if meta != nil {
+			estimatedCompletionTokens = meta.MaxTokens
+		}
+		if estimatedCompletionTokens == 0 {
+			estimatedCompletionTokens = defaultTieredPreConsumeMaxTokens
+		}
+		rawCost, trace, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{
+			P:   float64(promptTokens),
+			C:   float64(estimatedCompletionTokens),
+			Len: float64(promptTokens),
+		}, requestInput)
+		if err != nil {
+			return fmt.Errorf("agent cost for model %s failed: %w", modelName, err)
+		}
+		estimatedQuota, err := billingexpr.QuotaRoundStrict(rawCost / 1_000_000 * common.QuotaPerUnit)
+		if err != nil {
+			return err
+		}
+		info.AgentCostTieredBillingSnapshot = &billingexpr.BillingSnapshot{
+			BillingMode:               billing_setting.BillingModeTieredExpr,
+			ModelName:                 modelName,
+			ExprString:                expr,
+			ExprHash:                  billingexpr.ExprHashString(expr),
+			GroupRatio:                1,
+			EstimatedPromptTokens:     promptTokens,
+			EstimatedCompletionTokens: estimatedCompletionTokens,
+			EstimatedQuotaBeforeGroup: float64(estimatedQuota),
+			EstimatedQuotaAfterGroup:  estimatedQuota,
+			EstimatedTier:             trace.MatchedTier,
+			EstimatedBillingUnit:      trace.BillingUnit,
+			EstimatedFixedPrice:       trace.FixedPrice,
+			QuotaPerUnit:              common.QuotaPerUnit,
+			ExprVersion:               billingexpr.ExprVersion(expr),
+		}
+		info.AgentCostBillingRequestInput = &requestInput
+		return nil
+	}
+
+	modelPrice, usePrice := ratio_setting.GetModelPrice(modelName, false)
+	if value, exists := userPricingFloat(pricing, "ModelPrice"); exists {
+		modelPrice = value
+		usePrice = true
+	}
+	modelRatio, _, _ := ratio_setting.GetModelRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "ModelRatio"); exists {
+		modelRatio = value
+		usePrice = false
+	}
+	completionRatio := ratio_setting.GetCompletionRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "CompletionRatio"); exists {
+		completionRatio = value
+	}
+	cacheRatio, _ := ratio_setting.GetCacheRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "CacheRatio"); exists {
+		cacheRatio = value
+	}
+	cacheCreationRatio, _ := ratio_setting.GetCreateCacheRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "CreateCacheRatio"); exists {
+		cacheCreationRatio = value
+	}
+	imageRatio, _ := ratio_setting.GetImageRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "ImageRatio"); exists {
+		imageRatio = value
+	}
+	audioRatio := ratio_setting.GetAudioRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "AudioRatio"); exists {
+		audioRatio = value
+	}
+	audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(modelName)
+	if value, exists := userPricingFloat(pricing, "AudioCompletionRatio"); exists {
+		audioCompletionRatio = value
+	}
+	info.AgentCostPriceData = &hosttypes.PriceData{
+		ModelPrice:           modelPrice,
+		ModelRatio:           modelRatio,
+		CompletionRatio:      completionRatio,
+		CacheRatio:           cacheRatio,
+		CacheCreationRatio:   cacheCreationRatio,
+		CacheCreation5mRatio: cacheCreationRatio,
+		CacheCreation1hRatio: cacheCreationRatio * claudeCacheCreation1hMultiplier,
+		ImageRatio:           imageRatio,
+		AudioRatio:           audioRatio,
+		AudioCompletionRatio: audioCompletionRatio,
+		UsePrice:             usePrice,
+		GroupRatioInfo: hosttypes.GroupRatioInfo{
+			GroupRatio:        1,
+			GroupSpecialRatio: -1,
+		},
+	}
+	return nil
 }

@@ -109,6 +109,11 @@ type RelayInfo struct {
 	// PlatformQuota is the platform settlement basis for agent users (group_ratio=1,
 	// before agent discount). Zero for platform-direct users.
 	PlatformQuota int
+	// AgentCostPriceData and AgentCostTieredBillingSnapshot hold the independent
+	// platform→agent cost contract. They never affect the end-user charge.
+	AgentCostPriceData             *hosttypes.PriceData
+	AgentCostTieredBillingSnapshot *billingexpr.BillingSnapshot
+	AgentCostBillingRequestInput   *billingexpr.RequestInput
 	// AgentDiscountRatio is the agent model discount applied to the user charge.
 	AgentDiscountRatio float64
 

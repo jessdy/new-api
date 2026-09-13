@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ type AgentModelPrice struct {
 	AgentId       int     `json:"agent_id" gorm:"primaryKey;autoIncrement:false"`
 	Model         string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
 	DiscountRatio float64 `json:"discount_ratio" gorm:"type:decimal(16,8);not null;default:1"` // retail multiplier for end users
-	CostRatio     float64 `json:"cost_ratio" gorm:"type:decimal(16,8);not null;default:1"`     // platform→agent settlement / upstream cost
+	CostPricing   string  `json:"-" gorm:"type:text"`                                          // platform→agent settlement pricing
 	UpdatedAt     int64   `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
@@ -74,10 +75,11 @@ type AgentModelListItem struct {
 	ModelName       string        `json:"model_name"`
 	ChannelIds      []int         `json:"channel_ids"`
 	ChannelNames    []string      `json:"channel_names"`
-	CostRatio       float64       `json:"cost_ratio"`
-	HasCostOverride bool          `json:"has_cost_override"`
 	DiscountRatio   float64       `json:"discount_ratio"`
-	Effective       PricingValues `json:"effective,omitempty"`
+	CostConfigured  PricingValues `json:"cost_configured,omitempty"`
+	CostEffective   PricingValues `json:"cost_effective,omitempty"`
+	CostVersion     string        `json:"cost_version"`
+	HasCostOverride bool          `json:"has_cost_override"`
 }
 
 type AgentSettlementBill struct {
@@ -536,16 +538,20 @@ func GetAgentModelDiscount(agentId int, modelName string) (float64, bool) {
 	return price.DiscountRatio, true
 }
 
-func GetAgentModelCostRatio(agentId int, modelName string) (float64, bool) {
+func GetAgentModelCostPricing(agentId int, modelName string) (PricingValues, bool) {
 	if agentId <= 0 || modelName == "" {
-		return 1, false
+		return nil, false
 	}
 	var price AgentModelPrice
 	err := DB.Where("agent_id = ? AND model = ?", agentId, modelName).First(&price).Error
-	if err != nil || price.CostRatio <= 0 {
-		return 1, false
+	if err != nil || strings.TrimSpace(price.CostPricing) == "" {
+		return nil, false
 	}
-	return price.CostRatio, true
+	var pricing PricingValues
+	if err := common.UnmarshalJsonStr(price.CostPricing, &pricing); err != nil || len(pricing) == 0 {
+		return nil, false
+	}
+	return pricing, true
 }
 
 func UpsertAgentModelPrice(price *AgentModelPrice) error {
@@ -559,17 +565,14 @@ func UpsertAgentModelPrice(price *AgentModelPrice) error {
 	if price.DiscountRatio <= 0 {
 		return errors.New("discount ratio must be positive")
 	}
-	if price.CostRatio <= 0 {
-		price.CostRatio = 1
-	}
 	return DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "agent_id"}, {Name: "model"}},
 		DoUpdates: clause.AssignmentColumns([]string{"discount_ratio", "updated_at"}),
 	}).Create(price).Error
 }
 
-// UpsertAgentModelCost sets the platform→agent settlement cost ratio for a model.
-func UpsertAgentModelCost(agentId int, modelName string, costRatio float64) error {
+// UpsertAgentModelCost sets the platform→agent settlement pricing for a model.
+func UpsertAgentModelCost(agentId int, modelName string, pricing PricingValues) error {
 	modelName = strings.TrimSpace(modelName)
 	if agentId <= 0 {
 		return errors.New("agent id is required")
@@ -577,18 +580,25 @@ func UpsertAgentModelCost(agentId int, modelName string, costRatio float64) erro
 	if modelName == "" {
 		return errors.New("model is required")
 	}
-	if costRatio <= 0 {
-		return errors.New("cost ratio must be positive")
+	if len(pricing) == 0 {
+		return errors.New("cost pricing is required")
+	}
+	if err := ValidateModelPricing(modelName, pricing); err != nil {
+		return err
+	}
+	encoded, err := common.Marshal(pricing)
+	if err != nil {
+		return err
 	}
 	price := &AgentModelPrice{
 		AgentId:       agentId,
 		Model:         modelName,
 		DiscountRatio: 1,
-		CostRatio:     costRatio,
+		CostPricing:   string(encoded),
 	}
 	return DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "agent_id"}, {Name: "model"}},
-		DoUpdates: clause.AssignmentColumns([]string{"cost_ratio", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"cost_pricing", "updated_at"}),
 	}).Create(price).Error
 }
 
@@ -664,17 +674,25 @@ func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
 			ModelName:     name,
 			ChannelIds:    agg.channelIds,
 			ChannelNames:  agg.channelNames,
-			CostRatio:     1,
 			DiscountRatio: 1,
-			Effective:     effectiveByName[name],
+			CostEffective: effectiveByName[name],
+			CostVersion:   ModelPricingVersion(PricingValues{}),
 		}
 		if price, ok := priceByModel[name]; ok {
-			if price.CostRatio > 0 {
-				item.CostRatio = price.CostRatio
-			}
-			item.HasCostOverride = price.CostRatio > 0 && price.CostRatio != 1
 			if price.DiscountRatio > 0 {
 				item.DiscountRatio = price.DiscountRatio
+			}
+			if strings.TrimSpace(price.CostPricing) != "" {
+				var configured PricingValues
+				if err := common.UnmarshalJsonStr(price.CostPricing, &configured); err == nil && len(configured) > 0 {
+					item.CostConfigured = configured
+					item.CostVersion = ModelPricingVersion(configured)
+					item.HasCostOverride = true
+					merged := make(PricingValues, len(item.CostEffective)+len(configured))
+					maps.Copy(merged, item.CostEffective)
+					maps.Copy(merged, configured)
+					item.CostEffective = merged
+				}
 			}
 		}
 		items = append(items, item)

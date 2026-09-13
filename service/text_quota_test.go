@@ -1407,3 +1407,57 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, fields, "image_generation_call")
 	assert.NotContains(t, fields, "image_generation_call_price")
 }
+
+func TestSetAgentTextPlatformQuotaUsesIndependentCostPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 10,
+		TotalTokens:      110,
+	}
+
+	t.Run("ratio pricing", func(t *testing.T) {
+		relayInfo := &relaycommon.RelayInfo{
+			AgentId:         1,
+			OriginModelName: "agent-cost-model",
+			PriceData: hosttypes.PriceData{
+				ModelRatio:      9,
+				CompletionRatio: 9,
+			},
+			AgentCostPriceData: &hosttypes.PriceData{
+				ModelRatio:      2,
+				CompletionRatio: 3,
+				GroupRatioInfo: hosttypes.GroupRatioInfo{
+					GroupRatio: 1,
+				},
+			},
+		}
+
+		setAgentTextPlatformQuota(ctx, relayInfo, usage, false)
+
+		assert.Equal(t, 260, relayInfo.PlatformQuota)
+	})
+
+	t.Run("billing expression", func(t *testing.T) {
+		expr := `tier("base", p * 2 + c * 4)`
+		relayInfo := &relaycommon.RelayInfo{
+			AgentId:         1,
+			OriginModelName: "agent-cost-model",
+			AgentCostTieredBillingSnapshot: &billingexpr.BillingSnapshot{
+				BillingMode:  "tiered_expr",
+				ModelName:    "agent-cost-model",
+				ExprString:   expr,
+				GroupRatio:   1,
+				QuotaPerUnit: common.QuotaPerUnit,
+				ExprVersion:  billingexpr.ExprVersion(expr),
+			},
+		}
+
+		setAgentTextPlatformQuota(ctx, relayInfo, usage, false)
+
+		expected, err := billingexpr.QuotaRoundStrict(240.0 / 1_000_000 * common.QuotaPerUnit)
+		require.NoError(t, err)
+		assert.Equal(t, expected, relayInfo.PlatformQuota)
+	})
+}

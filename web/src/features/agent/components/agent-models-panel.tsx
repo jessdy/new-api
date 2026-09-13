@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -31,7 +31,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Sheet,
   SheetContent,
@@ -41,11 +40,16 @@ import {
 } from '@/components/ui/sheet'
 import {
   modelPricingDisplay,
-  type PricingValues,
+  pricingFromDraft,
+  pricingRow,
 } from '@/features/model-pricing/pricing'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { ModelPriceCell } from '@/features/pricing/components/model-price-cell'
 import { isDynamicPricingModel } from '@/features/pricing/lib/dynamic-price'
+import {
+  ModelPricingEditorPanel,
+  type ModelPricingEditorPanelHandle,
+} from '@/features/system-settings/models/model-pricing-sheet'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
@@ -62,33 +66,6 @@ type AgentModelsPanelProps = {
   agentId?: number
 }
 
-const COST_SCALED_KEYS = [
-  'ModelRatio',
-  'ModelPrice',
-  'CacheRatio',
-  'CreateCacheRatio',
-  'ImageRatio',
-  'AudioRatio',
-  'AudioCompletionRatio',
-] as const
-
-function applyUpstreamCostRatio(
-  effective: PricingValues | undefined,
-  costRatio: number
-): PricingValues {
-  const base = { ...(effective ?? {}) }
-  const ratio = Number.isFinite(costRatio) && costRatio > 0 ? costRatio : 1
-  if (ratio === 1) return base
-  const next: PricingValues = { ...base }
-  for (const key of COST_SCALED_KEYS) {
-    const value = next[key]
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      next[key] = value * ratio
-    }
-  }
-  return next
-}
-
 export function AgentModelsPanel(props: AgentModelsPanelProps) {
   const { t } = useTranslation()
   useSystemConfigStore((state) => state.config.currency)
@@ -98,7 +75,7 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
   const [detailModel, setDetailModel] = useState<AgentModelListItem | null>(
     null
   )
-  const [costRatio, setCostRatio] = useState('1')
+  const editorRef = useRef<ModelPricingEditorPanelHandle>(null)
 
   const modelsQuery = useQuery({
     queryKey: ['agent', 'models', props.agentId],
@@ -106,14 +83,14 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
   })
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      upsertAgentModelCost(
-        {
-          model: detailModel?.model_name ?? '',
-          cost_ratio: Number(costRatio),
-        },
+    mutationFn: async () => {
+      const draft = await editorRef.current?.commitDraft()
+      if (!draft || !detailModel) throw new Error(t('Save failed'))
+      return upsertAgentModelCost(
+        { model: detailModel.model_name, pricing: pricingFromDraft(draft) },
         props.agentId
-      ),
+      )
+    },
     onSuccess: async () => {
       toast.success(t('Agent model cost saved'))
       await modelsQuery.refetch()
@@ -135,14 +112,15 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
 
   const detailPricing = useMemo(() => {
     if (!detailModel) return null
-    const effective = applyUpstreamCostRatio(
-      detailModel.effective,
-      detailModel.cost_ratio
-    )
     return modelPricingDisplay({
       model_name: detailModel.model_name,
-      effective,
+      effective: detailModel.cost_effective,
     })
+  }, [detailModel])
+
+  const editData = useMemo(() => {
+    if (!detailModel) return null
+    return pricingRow(detailModel.model_name, detailModel.cost_effective ?? {})
   }, [detailModel])
 
   const columns = useMemo<StaticDataTableColumn<AgentModelListItem>[]>(
@@ -178,34 +156,25 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
       {
         id: 'cost',
         header: t('Upstream cost'),
-        cell: (row) => {
-          const effective = applyUpstreamCostRatio(
-            row.effective,
-            row.cost_ratio
-          )
-          return (
+        cell: (row) => (
             <Button
               variant='ghost'
               className='h-auto w-full max-w-full min-w-0 justify-start px-0 py-1 text-left font-normal hover:bg-transparent'
               aria-label={t('View pricing for {{model}}', {
                 model: row.model_name,
               })}
-              onClick={() => {
-                setDetailModel(row)
-                setCostRatio(String(row.cost_ratio || 1))
-              }}
+              onClick={() => setDetailModel(row)}
             >
               <ModelPriceCell
                 model={modelPricingDisplay({
                   model_name: row.model_name,
-                  effective,
+                  effective: row.cost_effective,
                 })}
                 options={{ tokenUnit: 'M' }}
                 showExpression={false}
               />
             </Button>
-          )
-        },
+          ),
       },
     ],
     [t]
@@ -280,9 +249,17 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
                 : null}
             </SheetDescription>
           </SheetHeader>
-          <div className='min-h-0 flex-1 space-y-4 overflow-y-auto p-4'>
-            {detailPricing ? (
-              <>
+          <div className='min-h-0 flex-1 overflow-hidden p-4'>
+            {canEditCost && editData ? (
+              <ModelPricingEditorPanel
+                ref={editorRef}
+                editData={editData}
+                embedded
+                className='h-full'
+              />
+            ) : null}
+            {!canEditCost && detailPricing ? (
+              <div className='h-full overflow-y-auto'>
                 <section className='space-y-3'>
                   <h3 className='text-muted-foreground text-xs'>
                     {t('Current Billing')}
@@ -351,36 +328,6 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
                     )
                   )}
                 </section>
-                {detailModel ? (
-                  <p className='text-muted-foreground text-xs'>
-                    {detailModel.has_cost_override
-                      ? t('Custom agent cost multiplier: ×{{ratio}}', {
-                          ratio: detailModel.cost_ratio,
-                        })
-                      : t('Using platform default upstream cost (×1)')}
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-
-            {canEditCost ? (
-              <div className='space-y-2 border-t pt-4'>
-                <Label htmlFor='agent-model-cost-ratio'>
-                  {t('Upstream cost multiplier')}
-                </Label>
-                <Input
-                  id='agent-model-cost-ratio'
-                  type='number'
-                  min={0}
-                  step='0.01'
-                  value={costRatio}
-                  onChange={(event) => setCostRatio(event.target.value)}
-                />
-                <p className='text-muted-foreground text-xs'>
-                  {t(
-                    'Example: 0.8 means the agent settles at 80% of the platform base quota for this model.'
-                  )}
-                </p>
               </div>
             ) : null}
           </div>
@@ -391,9 +338,7 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
             {canEditCost ? (
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={
-                  saveMutation.isPending || !(Number(costRatio) > 0)
-                }
+                disabled={saveMutation.isPending}
               >
                 {t('Save')}
               </Button>

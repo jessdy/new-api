@@ -171,8 +171,8 @@ func AgentListModels(c *gin.Context) {
 }
 
 type upsertAgentModelCostRequest struct {
-	Model     string  `json:"model"`
-	CostRatio float64 `json:"cost_ratio"`
+	Model   string              `json:"model"`
+	Pricing model.PricingValues `json:"pricing"`
 }
 
 func AgentUpsertModelCost(c *gin.Context) {
@@ -193,15 +193,15 @@ func AgentUpsertModelCost(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.UpsertAgentModelCost(agent.Id, req.Model, req.CostRatio); err != nil {
+	if err := model.UpsertAgentModelCost(agent.Id, req.Model, req.Pricing); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"model":      strings.TrimSpace(req.Model),
-			"cost_ratio": req.CostRatio,
+			"model":   strings.TrimSpace(req.Model),
+			"pricing": req.Pricing,
 		},
 	})
 }

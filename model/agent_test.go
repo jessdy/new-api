@@ -64,10 +64,10 @@ func TestAgentChannelSelectionAndPricing(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 1.2, discount)
 
-	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", 0.8))
-	cost, ok := GetAgentModelCostRatio(agent.Id, "gpt-4")
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", PricingValues{"ModelPrice": 0.8}))
+	cost, ok := GetAgentModelCostPricing(agent.Id, "gpt-4")
 	require.True(t, ok)
-	assert.Equal(t, 0.8, cost)
+	assert.Equal(t, 0.8, cost["ModelPrice"])
 	discount, ok = GetAgentModelDiscount(agent.Id, "gpt-4")
 	require.True(t, ok)
 	assert.Equal(t, 1.2, discount)
@@ -431,8 +431,8 @@ func TestListAgentModelsMergesChannelsAndCost(t *testing.T) {
 	}
 	require.NoError(t, CreateAgent(agent))
 	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{1, 2}))
-	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", 0.75))
-	require.NoError(t, UpsertAgentModelCost(agent.Id, "legacy-only", 1.1))
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", PricingValues{"ModelPrice": 0.75}))
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "legacy-only", PricingValues{"ModelPrice": 1.1}))
 
 	items, err := ListAgentModels(agent.Id)
 	require.NoError(t, err)
@@ -444,12 +444,11 @@ func TestListAgentModelsMergesChannelsAndCost(t *testing.T) {
 	require.Contains(t, byName, "claude-3")
 	require.Contains(t, byName, "gemini")
 	require.Contains(t, byName, "legacy-only")
-	assert.Equal(t, 0.75, byName["gpt-4"].CostRatio)
+	assert.Equal(t, 0.75, byName["gpt-4"].CostEffective["ModelPrice"])
 	assert.True(t, byName["gpt-4"].HasCostOverride)
 	assert.ElementsMatch(t, []string{"east", "west"}, byName["gpt-4"].ChannelNames)
-	assert.Equal(t, 1.0, byName["claude-3"].CostRatio)
 	assert.False(t, byName["claude-3"].HasCostOverride)
-	assert.Equal(t, 1.1, byName["legacy-only"].CostRatio)
+	assert.Equal(t, 1.1, byName["legacy-only"].CostEffective["ModelPrice"])
 }
 
 func TestReplaceAgentUserModelSettings(t *testing.T) {

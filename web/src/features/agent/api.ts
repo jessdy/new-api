@@ -75,17 +75,17 @@ export type AgentModelPrice = {
   agent_id?: number
   model: string
   discount_ratio: number
-  cost_ratio?: number
 }
 
 export type AgentModelListItem = {
   model_name: string
   channel_ids: number[]
   channel_names: string[]
-  cost_ratio: number
-  has_cost_override: boolean
   discount_ratio: number
-  effective?: Record<string, number | string>
+  cost_configured?: Record<string, number | string>
+  cost_effective?: Record<string, number | string>
+  cost_version: string
+  has_cost_override: boolean
 }
 
 export type AgentUserModelSettingItem = {
@@ -217,7 +217,7 @@ export async function listAgentModels(
 }
 
 export async function upsertAgentModelCost(
-  payload: { model: string; cost_ratio: number },
+  payload: { model: string; pricing: Record<string, number | string> },
   agentId?: number
 ): Promise<void> {
   const res = await api.put('/api/agent/models/cost', payload, {
