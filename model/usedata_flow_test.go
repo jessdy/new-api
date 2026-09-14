@@ -139,40 +139,49 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	CacheQuotaDataLock.Unlock()
 
 	LogQuotaData(QuotaDataLogParams{
-		UserID:    1,
-		Username:  "alice",
-		ModelName: "gpt-a",
-		CreatedAt: 3661,
-		UseGroup:  "vip",
-		TokenID:   11,
-		ChannelID: 1,
-		NodeName:  "node-a",
-		Quota:     100,
-		TokenUsed: 40,
+		UserID:           1,
+		Username:         "alice",
+		ModelName:        "gpt-a",
+		CreatedAt:        3661,
+		UseGroup:         "vip",
+		TokenID:          11,
+		ChannelID:        1,
+		NodeName:         "node-a",
+		Quota:            100,
+		TokenUsed:        40,
+		PromptTokens:     30,
+		CompletionTokens: 10,
+		CacheTokens:      5,
 	})
 	LogQuotaData(QuotaDataLogParams{
-		UserID:    1,
-		Username:  "alice",
-		ModelName: "gpt-a",
-		CreatedAt: 3700,
-		UseGroup:  "vip",
-		TokenID:   11,
-		ChannelID: 1,
-		NodeName:  "node-a",
-		Quota:     50,
-		TokenUsed: 20,
+		UserID:           1,
+		Username:         "alice",
+		ModelName:        "gpt-a",
+		CreatedAt:        3700,
+		UseGroup:         "vip",
+		TokenID:          11,
+		ChannelID:        1,
+		NodeName:         "node-a",
+		Quota:            50,
+		TokenUsed:        20,
+		PromptTokens:     15,
+		CompletionTokens: 5,
+		CacheTokens:      3,
 	})
 	LogQuotaData(QuotaDataLogParams{
-		UserID:    1,
-		Username:  "alice",
-		ModelName: "gpt-a",
-		CreatedAt: 3700,
-		UseGroup:  "default",
-		TokenID:   11,
-		ChannelID: 1,
-		NodeName:  "node-a",
-		Quota:     25,
-		TokenUsed: 10,
+		UserID:           1,
+		Username:         "alice",
+		ModelName:        "gpt-a",
+		CreatedAt:        3700,
+		UseGroup:         "default",
+		TokenID:          11,
+		ChannelID:        1,
+		NodeName:         "node-a",
+		Quota:            25,
+		TokenUsed:        10,
+		PromptTokens:     7,
+		CompletionTokens: 3,
+		CacheTokens:      2,
 	})
 
 	SaveQuotaDataCache()
@@ -188,6 +197,16 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	require.Equal(t, 2, rows[0].Count)
 	require.Equal(t, 150, rows[0].Quota)
 	require.Equal(t, 60, rows[0].TokenUsed)
+	require.Equal(t, 45, rows[0].PromptTokens)
+	require.Equal(t, 15, rows[0].CompletionTokens)
+	require.Equal(t, 8, rows[0].CacheTokens)
 	require.Equal(t, "default", rows[1].UseGroup)
 	require.Equal(t, 25, rows[1].Quota)
+
+	aggregated, err := GetAllQuotaDates(3600, 3600, "")
+	require.NoError(t, err)
+	require.Len(t, aggregated, 1)
+	require.Equal(t, 52, aggregated[0].PromptTokens)
+	require.Equal(t, 18, aggregated[0].CompletionTokens)
+	require.Equal(t, 10, aggregated[0].CacheTokens)
 }

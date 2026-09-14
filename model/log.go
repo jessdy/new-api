@@ -325,6 +325,7 @@ type RecordConsumeLogParams struct {
 	ChannelId        int       `json:"channel_id"`
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
+	CacheTokens      int       `json:"cache_tokens"`
 	ModelName        string    `json:"model_name"`
 	TokenName        string    `json:"token_name"`
 	Quota            int       `json:"quota"`
@@ -385,16 +386,19 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	if common.DataExportEnabled {
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    userId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  common.NodeName,
+			UserID:           userId,
+			Username:         username,
+			ModelName:        params.ModelName,
+			Quota:            params.Quota,
+			CreatedAt:        createdAt,
+			TokenUsed:        params.PromptTokens + params.CompletionTokens,
+			PromptTokens:     params.PromptTokens,
+			CompletionTokens: params.CompletionTokens,
+			CacheTokens:      params.CacheTokens,
+			UseGroup:         params.Group,
+			TokenID:          params.TokenId,
+			ChannelID:        params.ChannelId,
+			NodeName:         common.NodeName,
 		})
 	}
 }

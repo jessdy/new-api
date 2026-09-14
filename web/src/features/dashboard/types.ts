@@ -29,6 +29,9 @@ export interface QuotaDataItem {
   model_name?: string
   created_at: number
   token_used?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  cache_tokens?: number
   count?: number
   quota?: number
 }

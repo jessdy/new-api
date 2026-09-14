@@ -25,6 +25,9 @@ import {
   Flame,
   TrendingUp,
   Activity,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Database,
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -68,6 +71,30 @@ export function useModelStatCardsConfig(): StatCardConfig[] {
       icon: Layers,
       iconTone: 'chart-4',
       getValue: (stat) => stat?.tpm ?? 0,
+    },
+    {
+      key: 'promptTokens',
+      title: t('Input Tokens'),
+      description: t('Statistical tokens'),
+      icon: ArrowDownToLine,
+      iconTone: 'info',
+      getValue: (stat) => stat?.promptTokens ?? 0,
+    },
+    {
+      key: 'completionTokens',
+      title: t('Output Tokens'),
+      description: t('Statistical tokens'),
+      icon: ArrowUpFromLine,
+      iconTone: 'success',
+      getValue: (stat) => stat?.completionTokens ?? 0,
+    },
+    {
+      key: 'cacheTokens',
+      title: t('Cache Tokens'),
+      description: t('Statistical tokens'),
+      icon: Database,
+      iconTone: 'warning',
+      getValue: (stat) => stat?.cacheTokens ?? 0,
     },
     {
       key: 'avgRpm',

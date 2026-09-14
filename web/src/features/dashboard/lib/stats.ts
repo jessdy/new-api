@@ -18,6 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { QuotaDataItem } from '@/features/dashboard/types'
 
+export interface ModelUsageSummary {
+  modelName: string
+  callCount: number
+  promptTokens: number
+  completionTokens: number
+  cacheTokens: number
+  quota: number
+}
+
 /**
  * Safe division: handles NaN and Infinity cases
  */
@@ -27,7 +36,7 @@ export function safeDivide(
   precision: number = 3
 ): number {
   const result = value / divisor
-  if (isNaN(result) || !isFinite(result)) return 0
+  if (Number.isNaN(result) || !Number.isFinite(result)) return 0
   const factor = Math.pow(10, precision)
   return Math.round(result * factor) / factor
 }
@@ -41,7 +50,49 @@ export function calculateDashboardStats(data: QuotaDataItem[]) {
       totalQuota: acc.totalQuota + (Number(item.quota) || 0),
       totalCount: acc.totalCount + (Number(item.count) || 0),
       totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
+      promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
+      completionTokens:
+        acc.completionTokens + (Number(item.completion_tokens) || 0),
+      cacheTokens: acc.cacheTokens + (Number(item.cache_tokens) || 0),
     }),
-    { totalQuota: 0, totalCount: 0, totalTokens: 0 }
+    {
+      totalQuota: 0,
+      totalCount: 0,
+      totalTokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheTokens: 0,
+    }
+  )
+}
+
+export function aggregateModelUsage(
+  data: QuotaDataItem[]
+): ModelUsageSummary[] {
+  const usageByModel = new Map<string, ModelUsageSummary>()
+
+  for (const item of data) {
+    const modelName = item.model_name?.trim() || '—'
+    const current = usageByModel.get(modelName) ?? {
+      modelName,
+      callCount: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheTokens: 0,
+      quota: 0,
+    }
+    current.callCount += Number(item.count) || 0
+    current.promptTokens += Number(item.prompt_tokens) || 0
+    current.completionTokens += Number(item.completion_tokens) || 0
+    current.cacheTokens += Number(item.cache_tokens) || 0
+    current.quota += Number(item.quota) || 0
+    usageByModel.set(modelName, current)
+  }
+
+  return [...usageByModel.values()].sort(
+    (left, right) =>
+      right.callCount - left.callCount ||
+      right.quota - left.quota ||
+      left.modelName.localeCompare(right.modelName)
   )
 }

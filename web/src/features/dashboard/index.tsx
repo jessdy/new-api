@@ -67,6 +67,9 @@ const LOG_STAT_CARD_FALLBACK_KEYS = [
   'count',
   'quota',
   'tokens',
+  'input-tokens',
+  'output-tokens',
+  'cache-tokens',
   'average-rpm',
   'average-tpm',
 ] as const
@@ -89,6 +92,12 @@ const LazyLogStatCards = lazy(() =>
 const LazyModelCharts = lazy(() =>
   import('./components/models/model-charts').then((m) => ({
     default: m.ModelCharts,
+  }))
+)
+
+const LazyModelUsageTable = lazy(() =>
+  import('./components/models/model-usage-table').then((m) => ({
+    default: m.ModelUsageTable,
   }))
 )
 
@@ -125,13 +134,14 @@ const LazyFlowCharts = lazy(() =>
 function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
+      <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-4 xl:grid-cols-8'>
         {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
           <div
             key={key}
             className={cn(
               'px-2.5 py-1.5 sm:px-5 sm:py-4',
               index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
+                LOG_STAT_CARD_FALLBACK_KEYS.length % 2 !== 0 &&
                 'col-span-2 sm:col-span-1'
             )}
           >
@@ -142,6 +152,22 @@ function LogStatCardsFallback() {
             <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
             <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
           </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ModelUsageTableFallback() {
+  return (
+    <div className='overflow-hidden rounded-lg border'>
+      <div className='flex items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+        <Skeleton className='size-7 rounded-md' />
+        <Skeleton className='h-5 w-28' />
+      </div>
+      <div className='space-y-3 p-4'>
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className='h-8 w-full' />
         ))}
       </div>
     </div>
@@ -389,14 +415,19 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
+              <FadeIn delay={0.05}>
+                <Suspense fallback={<ModelUsageTableFallback />}>
+                  <LazyModelUsageTable data={modelData} loading={dataLoading} />
+                </Suspense>
+              </FadeIn>
               {isAdmin && (
-                <FadeIn delay={0.05}>
+                <FadeIn delay={0.1}>
                   <Suspense fallback={<PerformanceOverviewFallback />}>
                     <LazyPerformanceOverview />
                   </Suspense>
                 </FadeIn>
               )}
-              <FadeIn delay={0.1}>
+              <FadeIn delay={0.15}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyConsumptionDistributionChart
                     data={modelData}
@@ -410,7 +441,7 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
-              <FadeIn delay={0.15}>
+              <FadeIn delay={0.2}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyModelCharts
                     data={modelData}
@@ -423,7 +454,7 @@ export function Dashboard() {
                 </Suspense>
               </FadeIn>
               {isAdmin && (
-                <FadeIn delay={0.2}>
+                <FadeIn delay={0.25}>
                   <Suspense fallback={<ModelChartsFallback />}>
                     <LazyAgentCharts
                       filters={agentChartsFilters}
