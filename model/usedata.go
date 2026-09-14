@@ -25,6 +25,12 @@ type QuotaData struct {
 	Quota     int    `json:"quota" gorm:"default:0"`
 }
 
+type PlatformUsageSummary struct {
+	Quota        int64 `json:"quota"`
+	UsedQuota    int64 `json:"used_quota"`
+	RequestCount int64 `json:"request_count"`
+}
+
 type QuotaDataLogParams struct {
 	UserID    int
 	Username  string
@@ -217,4 +223,12 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaDat
 	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
 	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
 	return quotaDatas, err
+}
+
+func GetPlatformUsageSummary() (PlatformUsageSummary, error) {
+	var summary PlatformUsageSummary
+	err := DB.Model(&User{}).
+		Select("COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(used_quota), 0) AS used_quota, COALESCE(SUM(request_count), 0) AS request_count").
+		Scan(&summary).Error
+	return summary, err
 }

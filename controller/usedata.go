@@ -45,6 +45,15 @@ func GetAllQuotaDates(c *gin.Context) {
 	return
 }
 
+func GetPlatformUsageSummary(c *gin.Context) {
+	summary, err := model.GetPlatformUsageSummary()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, summary)
+}
+
 func GetQuotaDatesByUser(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)

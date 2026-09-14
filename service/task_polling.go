@@ -659,12 +659,45 @@ func truncateBase64(s string) string {
 	return s[:maxKeep] + "..."
 }
 
+func settleAgentTaskCost(ctx context.Context, task *model.Task, usageFacts map[string]any) {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.AgentId <= 0 || bc.AgentCostTieredSnapshot == nil {
+		return
+	}
+	snapshot := bc.AgentCostTieredSnapshot
+	facts := make(map[string]any, len(snapshot.UsageFacts)+len(usageFacts))
+	maps.Copy(facts, snapshot.UsageFacts)
+	maps.Copy(facts, usageFacts)
+	result, err := billingexpr.ComputeTieredQuotaWithRequest(
+		snapshot,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("任务 %s 代理成本结算失败，保留预扣成本: %v", task.TaskID, err))
+		return
+	}
+	AdjustAgentPlatformQuota(bc.AgentId, result.ActualQuotaAfterGroup-bc.AgentPlatformQuota)
+	bc.AgentPlatformQuota = result.ActualQuotaAfterGroup
+	snapshot.UsageFacts = facts
+	snapshot.EstimatedTier = result.MatchedTier
+}
+
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。
 // 返回 true 表示用量结算路径已接管最终计费；失败任务仅在返回 false 时补做全额退款。
 // 优先级：1. tiered snapshot → 2. adaptor 调整 → 3. token 重算。
 //
 // 表达式求值失败会保留预扣额度，因此也视为已接管，避免错误全退。
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) bool {
+	var agentCostClamp *common.QuotaClamp
+	if task.Status != model.TaskStatusFailure {
+		settleAgentTaskCost(ctx, task, taskResult.UsageFacts)
+		agentCostTokens := taskResult.TotalTokens
+		if agentCostTokens == 0 && taskResult.CompletionTokens > 0 {
+			agentCostTokens = taskResult.CompletionTokens
+		}
+		agentCostClamp = settleAgentTaskTokenCost(task, agentCostTokens)
+	}
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.TieredSnapshot != nil {
 		// 用量表达式结算只适用于成功任务；失败任务由调用方全额退款。
 		if task.Status == model.TaskStatusFailure {
@@ -683,17 +716,19 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		}
 		bc.TieredSnapshot.UsageFacts = usageFacts
 		bc.TieredSnapshot.EstimatedTier = result.MatchedTier
-		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, "任务用量表达式结算", result.Clamp)
+		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, "任务用量表达式结算", result.Clamp, agentCostClamp)
 		return true
 	}
 	// 按次计费的成功任务保持预扣；失败任务由调用方全额退款。
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
+		recordAgentTaskCostClamp(ctx, task, agentCostClamp)
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
 		return false
 	}
 	// 优先让 adaptor 决定最终额度。
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整")
+		ratioClamp := recalculateAgentTaskCostByRetailRatio(task, actualQuota)
+		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", agentCostClamp, ratioClamp)
 		return true
 	}
 	// 回退到 token 重算。
@@ -702,8 +737,13 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		tokens = taskResult.CompletionTokens
 	}
 	if tokens > 0 {
-		return RecalculateTaskQuotaByTokens(ctx, task, tokens)
+		settled := RecalculateTaskQuotaByTokens(ctx, task, tokens, agentCostClamp)
+		if !settled {
+			recordAgentTaskCostClamp(ctx, task, agentCostClamp)
+		}
+		return settled
 	}
+	recordAgentTaskCostClamp(ctx, task, agentCostClamp)
 	return false
 }
 

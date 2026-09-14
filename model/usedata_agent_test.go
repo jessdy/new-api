@@ -138,3 +138,34 @@ func TestGetQuotaDataByAgentIdAggregatesRegisteredUsersOnly(t *testing.T) {
 	assert.Equal(t, 100, byModel["gpt-4"].TokenUsed)
 	assert.Equal(t, 80, byModel["claude-3"].Quota)
 }
+
+func TestGetPlatformUsageSummaryAggregatesAllNonDeletedUsers(t *testing.T) {
+	newAgentTestDB(t)
+
+	users := []*User{
+		{
+			Id: 401, Username: "admin", Password: "x", Role: common.RoleAdminUser,
+			Status: common.UserStatusEnabled, Group: "default", AffCode: "summary-admin",
+			Quota: 1000, UsedQuota: 200, RequestCount: 3,
+		},
+		{
+			Id: 402, Username: "agent", Password: "x", Role: common.RoleAgentUser,
+			Status: common.UserStatusEnabled, Group: "default", AffCode: "summary-agent",
+			Quota: 500, UsedQuota: 100, RequestCount: 2,
+		},
+		{
+			Id: 403, Username: "user", Password: "x", Role: common.RoleCommonUser,
+			Status: common.UserStatusEnabled, Group: "default", AffCode: "summary-user",
+			Quota: 250, UsedQuota: 50, RequestCount: 1,
+		},
+	}
+	require.NoError(t, DB.Create(users).Error)
+	require.NoError(t, DB.Delete(users[2]).Error)
+
+	summary, err := GetPlatformUsageSummary()
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1500), summary.Quota)
+	assert.Equal(t, int64(300), summary.UsedQuota)
+	assert.Equal(t, int64(5), summary.RequestCount)
+}

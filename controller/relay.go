@@ -738,14 +738,26 @@ func executeTaskSubmissionWith(
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
+	agentCostModelRatio := float64(0)
+	agentCostUsePrice := false
+	if relayInfo.AgentCostPriceData != nil {
+		agentCostModelRatio = relayInfo.AgentCostPriceData.ModelRatio
+		agentCostUsePrice = relayInfo.AgentCostPriceData.UsePrice
+	}
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
-		ModelPrice:      relayInfo.PriceData.ModelPrice,
-		GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-		ModelRatio:      relayInfo.PriceData.ModelRatio,
-		OtherRatios:     relayInfo.PriceData.OtherRatios(),
-		OriginModelName: relayInfo.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
-		TieredSnapshot:  relayInfo.TieredBillingSnapshot,
+		ModelPrice:              relayInfo.PriceData.ModelPrice,
+		GroupRatio:              relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:              relayInfo.PriceData.ModelRatio,
+		OtherRatios:             relayInfo.PriceData.OtherRatios(),
+		OriginModelName:         relayInfo.OriginModelName,
+		PerCallBilling:          common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+		TieredSnapshot:          relayInfo.TieredBillingSnapshot,
+		PricingResolved:         true,
+		AgentId:                 relayInfo.AgentId,
+		AgentPlatformQuota:      relayInfo.PlatformQuota,
+		AgentCostTieredSnapshot: relayInfo.AgentCostTieredBillingSnapshot,
+		AgentCostModelRatio:     agentCostModelRatio,
+		AgentCostUsePrice:       agentCostUsePrice,
 	}
 	task.Quota = result.Quota
 	task.Data = result.TaskData

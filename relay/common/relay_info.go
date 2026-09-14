@@ -116,6 +116,14 @@ type RelayInfo struct {
 	AgentCostBillingRequestInput   *billingexpr.RequestInput
 	// AgentDiscountRatio is the agent model discount applied to the user charge.
 	AgentDiscountRatio float64
+	// RetailPricing freezes the role-specific model pricing selected for this
+	// request. Empty values inherit the platform pricing maps.
+	RetailPricing              map[string]any
+	RetailPricingSource        string
+	RetailPricingResolvedModel string
+	RetailPricingResolved      bool
+	RetailPricingAllowed       bool
+	RetailPricingDiscount      float64
 
 	RequestURLPath     string
 	RequestHeaders     map[string]string

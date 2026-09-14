@@ -24,12 +24,16 @@ import { useTranslation } from 'react-i18next'
 
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
-import { getUserQuotaDates } from '@/features/dashboard/api'
+import {
+  getPlatformUsageSummary,
+  getUserQuotaDates,
+} from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
 import { useStatus } from '@/hooks/use-status'
 import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -143,28 +147,48 @@ export function SummaryCards() {
   const { status, loading } = useStatus()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
-  const remainQuota = Number(user?.quota ?? 0)
-  const usedQuota = Number(user?.used_quota ?? 0)
-  const requestCount = Number(user?.request_count ?? 0)
+  const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
 
   const usageTrendQuery = useQuery({
     queryKey: [
       'dashboard',
       'overview',
       'summary-sparklines',
+      isAdmin ? 'platform' : user?.id,
       summaryTimeRange.start_timestamp,
       summaryTimeRange.end_timestamp,
     ],
     queryFn: async () =>
       requireServerSuccess(
-        await getUserQuotaDates({
-          start_timestamp: summaryTimeRange.start_timestamp,
-          end_timestamp: summaryTimeRange.end_timestamp,
-          default_time: 'hour',
-        })
+        await getUserQuotaDates(
+          {
+            start_timestamp: summaryTimeRange.start_timestamp,
+            end_timestamp: summaryTimeRange.end_timestamp,
+            default_time: 'hour',
+          },
+          isAdmin
+        )
       ),
     staleTime: 60 * 1000,
   })
+
+  const platformSummaryQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'platform-summary'],
+    queryFn: async () => requireServerSuccess(await getPlatformUsageSummary()),
+    enabled: isAdmin,
+    staleTime: 60 * 1000,
+  })
+
+  const remainQuota = isAdmin
+    ? Number(platformSummaryQuery.data?.data.quota ?? 0)
+    : Number(user?.quota ?? 0)
+  const usedQuota = isAdmin
+    ? Number(platformSummaryQuery.data?.data.used_quota ?? 0)
+    : Number(user?.used_quota ?? 0)
+  const requestCount = isAdmin
+    ? Number(platformSummaryQuery.data?.data.request_count ?? 0)
+    : Number(user?.request_count ?? 0)
+  const summaryLoading = loading || (isAdmin && platformSummaryQuery.isLoading)
 
   const summaryValues = useMemo(() => {
     return {
@@ -280,7 +304,7 @@ export function SummaryCards() {
                   tone={it.tone}
                   sparkline={it.sparkline}
                   sparklineVariant={it.sparklineVariant}
-                  loading={loading}
+                  loading={summaryLoading}
                   compactMobile
                 />
               </StaggerItem>

@@ -78,6 +78,30 @@ func pricingEndpointTypesFromPricing(pricings []Pricing) map[string][]constant.E
 	return byModel
 }
 
+func TestPricingWithRoleSpecificValuesMatchesSettlementMode(t *testing.T) {
+	base := Pricing{
+		ModelName:       "priced-model",
+		QuotaType:       0,
+		ModelRatio:      1,
+		CompletionRatio: 2,
+		BillingMode:     "tiered_expr",
+		BillingExpr:     `tier("base", p * 1 + c * 2)`,
+	}
+
+	fixed := base.WithPricingValues(PricingValues{"ModelPrice": 0.25})
+	assert.Equal(t, 1, fixed.QuotaType)
+	assert.Equal(t, 0.25, fixed.ModelPrice)
+	assert.Empty(t, fixed.BillingMode)
+	assert.Empty(t, fixed.BillingExpr)
+
+	tiered := base.WithPricingValues(PricingValues{
+		"billing_setting.billing_mode": "tiered_expr",
+		"billing_setting.billing_expr": `tier("agent", p * 0.5 + c * 1)`,
+	})
+	assert.Equal(t, "tiered_expr", tiered.BillingMode)
+	assert.Equal(t, `tier("agent", p * 0.5 + c * 1)`, tiered.BillingExpr)
+}
+
 func TestPricingAdvancedCustomUsesConfiguredEndpointTypes(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

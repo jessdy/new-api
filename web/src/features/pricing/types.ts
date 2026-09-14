@@ -77,6 +77,8 @@ export type PricingModel = {
   billing_usage_examples?: BillingUsageExample[]
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
+  /** Model-specific settlement multiplier, such as an agent retail discount. */
+  pricing_multiplier?: number
   /**
    * Optional model metadata fields reserved for backend-provided catalog data.
    * Keep them data-driven; do not synthesize display values on the client.

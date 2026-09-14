@@ -58,6 +58,18 @@ export async function getUserQuotaDates(
   return res.data
 }
 
+export async function getPlatformUsageSummary() {
+  const res = await api.get<{
+    success: boolean
+    data: {
+      quota: number
+      used_quota: number
+      request_count: number
+    }
+  }>('/api/data/summary')
+  return res.data
+}
+
 // ----------------------------------------------------------------------------
 // System Monitoring
 // ----------------------------------------------------------------------------

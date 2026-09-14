@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -44,6 +45,62 @@ const claudeCacheCreation1hMultiplier = 6 / 3.75
 // used for tiered expression pre-consume when the client omits max_tokens, so
 // the pre-consumed quota still reflects a plausible output cost in paid groups.
 const defaultTieredPreConsumeMaxTokens = 8192
+
+func PrepareEffectivePricing(info *relaycommon.RelayInfo, pricingModelName string) (model.EffectiveModelPricing, error) {
+	result := model.EffectiveModelPricing{
+		Source:        model.PricingSourcePlatform,
+		Allowed:       true,
+		DiscountRatio: 1,
+	}
+	if info == nil || info.UserId <= 0 {
+		return result, nil
+	}
+	if info.RetailPricingResolved && info.RetailPricingResolvedModel == pricingModelName {
+		result.Pricing = maps.Clone(info.RetailPricing)
+		result.Source = info.RetailPricingSource
+		result.Allowed = info.RetailPricingAllowed
+		result.DiscountRatio = info.RetailPricingDiscount
+		return result, nil
+	}
+
+	user, err := model.GetUserCache(info.UserId)
+	if err != nil {
+		return result, err
+	}
+	result, err = model.ResolveEffectiveModelPricing(user, info.OriginModelName, pricingModelName)
+	if err != nil {
+		return result, err
+	}
+	info.RetailPricing = maps.Clone(result.Pricing)
+	info.RetailPricingSource = result.Source
+	info.RetailPricingResolvedModel = pricingModelName
+	info.RetailPricingResolved = true
+	info.RetailPricingAllowed = result.Allowed
+	info.RetailPricingDiscount = result.DiscountRatio
+	return result, nil
+}
+
+func EffectiveBillingConfig(info *relaycommon.RelayInfo, pricingModelName string) (model.EffectiveModelPricing, string, string, error) {
+	effective, err := PrepareEffectivePricing(info, pricingModelName)
+	if err != nil || !effective.Allowed {
+		return effective, "", "", err
+	}
+	mode := billing_setting.GetBillingMode(pricingModelName)
+	if configuredMode, ok := effective.Pricing["billing_setting.billing_mode"].(string); ok {
+		mode = configuredMode
+	} else if len(effective.Pricing) > 0 &&
+		(userPricingHas(effective.Pricing, "ModelPrice") || userPricingHas(effective.Pricing, "ModelRatio")) {
+		mode = ""
+	}
+	expression := ""
+	if mode == billing_setting.BillingModeTieredExpr {
+		expression, _ = effective.Pricing["billing_setting.billing_expr"].(string)
+		if strings.TrimSpace(expression) == "" {
+			expression, _ = billing_setting.GetBillingExpr(pricingModelName)
+		}
+	}
+	return effective, mode, expression, nil
+}
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hosttypes.GroupRatioInfo {
@@ -94,7 +151,9 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 			}
 			userId = relayInfo.UserId
 		}
-		if d, ok := model.GetAgentModelDiscount(agentId, modelName); ok {
+		if relayInfo != nil && relayInfo.RetailPricingResolved {
+			discount = relayInfo.RetailPricingDiscount
+		} else if d, ok := model.GetAgentModelDiscount(agentId, modelName); ok {
 			if _, hasUserPricing := model.GetAgentUserModelPricing(userId, modelName); !hasUserPricing {
 				discount = d
 			}
@@ -128,26 +187,35 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 	}
 	billingModelName := info.GetBillingModelName()
-	if err := prepareAgentCostPricing(c, info, billingModelName, promptTokens, meta); err != nil {
+	effective, billingMode, exprStr, err := EffectiveBillingConfig(info, billingModelName)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if !effective.Allowed {
+		return hosttypes.PriceData{}, modelPriceNotConfiguredError(billingModelName, info.UserId)
+	}
+	if err := PrepareAgentCostPricing(c, info, billingModelName, promptTokens, meta); err != nil {
 		return hosttypes.PriceData{}, err
 	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
-	userPricing, hasUserPricing := model.GetAgentUserModelPricing(info.UserId, billingModelName)
-	if hasUserPricing {
-		if price, ok := userPricingFloat(userPricing, "ModelPrice"); ok {
+	effectivePricing := effective.Pricing
+	hasPricingOverride := len(effectivePricing) > 0
+	if hasPricingOverride {
+		if price, ok := userPricingFloat(effectivePricing, "ModelPrice"); ok {
 			modelPrice = price
 			usePrice = true
-		} else if _, hasRatio := userPricingFloat(userPricing, "ModelRatio"); hasRatio {
+		} else if _, hasRatio := userPricingFloat(effectivePricing, "ModelRatio"); hasRatio {
 			usePrice = false
 		}
 	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	// Check if this model uses tiered_expr billing (user override forces ratio/price modes above)
-	if billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr &&
-		!(hasUserPricing && (userPricingHas(userPricing, "ModelPrice") || userPricingHas(userPricing, "ModelRatio"))) {
-		return modelPriceHelperTiered(c, info, billingModelName, promptTokens, meta, groupRatioInfo)
+	if billingMode == billing_setting.BillingModeTieredExpr {
+		if strings.TrimSpace(exprStr) == "" {
+			return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", billingModelName)
+		}
+		return modelPriceHelperTiered(c, info, billingModelName, exprStr, promptTokens, meta, groupRatioInfo)
 	}
 
 	var preConsumedQuota int
@@ -169,8 +237,8 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(billingModelName)
-		if hasUserPricing {
-			if ratio, ok := userPricingFloat(userPricing, "ModelRatio"); ok {
+		if hasPricingOverride {
+			if ratio, ok := userPricingFloat(effectivePricing, "ModelRatio"); ok {
 				modelRatio = ratio
 				success = true
 				matchName = billingModelName
@@ -191,23 +259,23 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(billingModelName)
 		audioRatio = ratio_setting.GetAudioRatio(billingModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(billingModelName)
-		if hasUserPricing {
-			if v, ok := userPricingFloat(userPricing, "CompletionRatio"); ok {
+		if hasPricingOverride {
+			if v, ok := userPricingFloat(effectivePricing, "CompletionRatio"); ok {
 				completionRatio = v
 			}
-			if v, ok := userPricingFloat(userPricing, "CacheRatio"); ok {
+			if v, ok := userPricingFloat(effectivePricing, "CacheRatio"); ok {
 				cacheRatio = v
 			}
-			if v, ok := userPricingFloat(userPricing, "CreateCacheRatio"); ok {
+			if v, ok := userPricingFloat(effectivePricing, "CreateCacheRatio"); ok {
 				cacheCreationRatio = v
 			}
-			if v, ok := userPricingFloat(userPricing, "ImageRatio"); ok {
+			if v, ok := userPricingFloat(effectivePricing, "ImageRatio"); ok {
 				imageRatio = v
 			}
-			if v, ok := userPricingFloat(userPricing, "AudioRatio"); ok {
+			if v, ok := userPricingFloat(effectivePricing, "AudioRatio"); ok {
 				audioRatio = v
 			}
-			if v, ok := userPricingFloat(userPricing, "AudioCompletionRatio"); ok {
+			if v, ok := userPricingFloat(effectivePricing, "AudioCompletionRatio"); ok {
 				audioCompletionRatio = v
 			}
 		}
@@ -282,21 +350,37 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
+	pricingModelName := info.GetBillingModelName()
+	effective, err := PrepareEffectivePricing(info, pricingModelName)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if !effective.Allowed {
+		return hosttypes.PriceData{}, modelPriceNotConfiguredError(pricingModelName, info.UserId)
+	}
+	if err := PrepareAgentCostPricing(c, info, pricingModelName, 0, nil); err != nil {
+		return hosttypes.PriceData{}, err
+	}
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
+	modelPrice, success := ratio_setting.GetModelPrice(pricingModelName, true)
 	usePrice := success
 	var modelRatio float64
+	if price, ok := userPricingFloat(effective.Pricing, "ModelPrice"); ok {
+		modelPrice = price
+		success = true
+		usePrice = true
+	}
 
 	if !success {
-		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
+		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[pricingModelName]
 		if ok {
 			modelPrice = defaultPrice
 			usePrice = true
 		} else {
 			var ratioSuccess bool
 			var matchName string
-			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(pricingModelName)
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
 				acceptUnsetRatio = true
@@ -305,6 +389,10 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 				return hosttypes.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
 			}
 		}
+	}
+	if ratio, ok := userPricingFloat(effective.Pricing, "ModelRatio"); ok {
+		modelRatio = ratio
+		usePrice = false
 	}
 
 	var quota int
@@ -407,16 +495,15 @@ func resolveBillingModelName(origin string) string {
 	return matched
 }
 
-func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billingModelName string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
-	exprStr, ok := billing_setting.GetBillingExpr(billingModelName)
-	if !ok {
-		return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", billingModelName)
-	}
+func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billingModelName, exprStr string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
 	if info.RelayFormat == types.RelayFormatOpenAIRealtime && billingexpr.UsesFixedPricing(exprStr) {
 		return hosttypes.PriceData{}, fmt.Errorf("fixed pricing is not supported for Realtime requests")
 	}
 
-	estimatedCompletionTokens := meta.MaxTokens
+	estimatedCompletionTokens := 0
+	if meta != nil {
+		estimatedCompletionTokens = meta.MaxTokens
+	}
 	if estimatedCompletionTokens == 0 && groupRatioInfo.GroupRatio != 0 {
 		estimatedCompletionTokens = defaultTieredPreConsumeMaxTokens
 	}
@@ -512,7 +599,7 @@ func userPricingFloat(pricing model.PricingValues, key string) (float64, bool) {
 	}
 }
 
-func prepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
+func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
 	if info == nil || info.AgentId <= 0 {
 		return nil
 	}
@@ -529,6 +616,9 @@ func prepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 
 	mode, _ := pricing["billing_setting.billing_mode"].(string)
 	if mode == billing_setting.BillingModeTieredExpr {
+		if info.RelayFormat == types.RelayFormatTask || info.RelayFormat == types.RelayFormatMjProxy {
+			return nil
+		}
 		expr, ok := pricing["billing_setting.billing_expr"].(string)
 		if !ok || strings.TrimSpace(expr) == "" {
 			return fmt.Errorf("agent cost for model %s has no billing expression", modelName)
@@ -631,4 +721,101 @@ func prepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 		},
 	}
 	return nil
+}
+
+func PrepareAgentTaskCostPricing(info *relaycommon.RelayInfo, facts map[string]any) error {
+	if info == nil || info.AgentId <= 0 {
+		return nil
+	}
+	modelName := info.GetBillingModelName()
+	pricing, ok := model.GetAgentModelCostPricing(info.AgentId, modelName)
+	if !ok && info.OriginModelName != modelName {
+		pricing, ok = model.GetAgentModelCostPricing(info.AgentId, info.OriginModelName)
+		if ok {
+			modelName = info.OriginModelName
+		}
+	}
+	if !ok {
+		return nil
+	}
+	mode, _ := pricing["billing_setting.billing_mode"].(string)
+	if mode != billing_setting.BillingModeTieredExpr {
+		return nil
+	}
+	expression, ok := pricing["billing_setting.billing_expr"].(string)
+	if !ok || strings.TrimSpace(expression) == "" {
+		return fmt.Errorf("agent cost for model %s has no billing expression", modelName)
+	}
+	if billingexpr.UsesFixedPricing(expression) {
+		return fmt.Errorf("fixed pricing is not supported for task usage expressions")
+	}
+	cost, trace, err := billingexpr.RunExprWithRequest(
+		expression,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		return fmt.Errorf("agent cost for model %s failed: %w", modelName, err)
+	}
+	quota, clamp := common.QuotaRoundChecked(cost * common.QuotaPerUnit)
+	if clamp != nil {
+		info.QuotaClamp = clamp
+	}
+	info.AgentCostTieredBillingSnapshot = &billingexpr.BillingSnapshot{
+		BillingMode:               billing_setting.BillingModeTieredExpr,
+		ModelName:                 modelName,
+		ExprString:                expression,
+		ExprHash:                  billingexpr.ExprHashString(expression),
+		GroupRatio:                1,
+		EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit,
+		EstimatedQuotaAfterGroup:  quota,
+		EstimatedTier:             trace.MatchedTier,
+		QuotaPerUnit:              common.QuotaPerUnit,
+		ExprVersion:               billingexpr.ExprVersion(expression),
+		TaskUsageBilling:          true,
+		UsageFacts:                maps.Clone(facts),
+	}
+	info.PlatformQuota = quota
+	return nil
+}
+
+func AgentTaskCostUsesTiered(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.AgentId <= 0 {
+		return false
+	}
+	pricing, ok := model.GetAgentModelCostPricing(info.AgentId, info.GetBillingModelName())
+	if !ok && info.OriginModelName != info.GetBillingModelName() {
+		pricing, ok = model.GetAgentModelCostPricing(info.AgentId, info.OriginModelName)
+	}
+	if !ok {
+		return false
+	}
+	mode, _ := pricing["billing_setting.billing_mode"].(string)
+	return mode == billing_setting.BillingModeTieredExpr
+}
+
+func SetAgentTaskPlatformQuota(info *relaycommon.RelayInfo) {
+	if info == nil || info.AgentId <= 0 || info.PlatformQuota > 0 {
+		return
+	}
+	if snapshot := info.AgentCostTieredBillingSnapshot; snapshot != nil {
+		info.PlatformQuota = snapshot.EstimatedQuotaAfterGroup
+		return
+	}
+	cost := info.AgentCostPriceData
+	if cost == nil {
+		return
+	}
+	baseQuota := cost.ModelRatio / 2 * common.QuotaPerUnit
+	if cost.UsePrice {
+		baseQuota = cost.ModelPrice * common.QuotaPerUnit
+	}
+	for key, ratio := range info.PriceData.OtherRatios() {
+		cost.AddOtherRatio(key, ratio)
+	}
+	quota, clamp := common.QuotaFromFloatChecked(cost.ApplyOtherRatiosToFloat(baseQuota))
+	if clamp != nil {
+		info.QuotaClamp = clamp
+	}
+	info.PlatformQuota = quota
 }

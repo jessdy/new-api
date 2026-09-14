@@ -333,6 +333,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
+		dataRoute.GET("/summary", middleware.AdminAuth(), controller.GetPlatformUsageSummary)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/agents", middleware.AdminAuth(), controller.GetQuotaDatesByAgent)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)

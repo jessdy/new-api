@@ -228,6 +228,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	// 3. 回减预扣时累计的用户和渠道用量，请求次数保持不变
 	model.UpdateUserUsedQuota(task.UserId, -quota)
 	model.UpdateChannelUsedQuota(task.ChannelId, -quota)
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.AgentPlatformQuota > 0 {
+		AdjustAgentPlatformQuota(bc.AgentId, -bc.AgentPlatformQuota)
+		bc.AgentPlatformQuota = 0
+	}
 
 	// 4. 记录日志
 	other := taskBillingOther(task)
@@ -327,43 +331,107 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	})
 }
 
+func recalculateAgentTaskCostByRetailRatio(task *model.Task, actualQuota int) *common.QuotaClamp {
+	bc := task.PrivateData.BillingContext
+	if bc == nil ||
+		bc.AgentId <= 0 ||
+		bc.AgentCostTieredSnapshot != nil ||
+		bc.AgentCostUsePrice ||
+		bc.AgentCostModelRatio > 0 ||
+		bc.AgentPlatformQuota <= 0 ||
+		task.Quota <= 0 {
+		return nil
+	}
+	platformQuota, clamp := common.QuotaFromFloatChecked(
+		float64(bc.AgentPlatformQuota) * float64(actualQuota) / float64(task.Quota),
+	)
+	AdjustAgentPlatformQuota(bc.AgentId, platformQuota-bc.AgentPlatformQuota)
+	bc.AgentPlatformQuota = platformQuota
+	return clamp
+}
+
+func recordAgentTaskCostClamp(ctx context.Context, task *model.Task, clamp *common.QuotaClamp) {
+	if clamp == nil {
+		return
+	}
+	logger.LogWarn(ctx, fmt.Sprintf("任务 %s 代理成本结算额度发生饱和: %+v", task.TaskID, clamp))
+	other := taskBillingOther(task)
+	other.SetPublic("task_id", task.TaskID)
+	attachQuotaSaturationToOther(other, clamp)
+	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+		UserId:    task.UserId,
+		LogType:   model.LogTypeConsume,
+		Content:   "代理成本结算额度饱和",
+		ChannelId: task.ChannelId,
+		ModelName: taskModelName(task),
+		Quota:     0,
+		TokenId:   task.PrivateData.TokenId,
+		Group:     task.Group,
+		Other:     other,
+		NodeName:  task.PrivateData.NodeName,
+	})
+}
+
+func settleAgentTaskTokenCost(task *model.Task, totalTokens int) *common.QuotaClamp {
+	bc := task.PrivateData.BillingContext
+	if bc == nil ||
+		bc.AgentId <= 0 ||
+		bc.AgentCostTieredSnapshot != nil ||
+		bc.AgentCostUsePrice ||
+		bc.AgentCostModelRatio <= 0 ||
+		totalTokens <= 0 {
+		return nil
+	}
+	otherMultiplier := 1.0
+	if priceData := taskBillingContextPriceData(bc); priceData != nil {
+		otherMultiplier = priceData.OtherRatioMultiplier()
+	}
+	platformQuota, clamp := common.QuotaFromFloatChecked(
+		float64(totalTokens) * bc.AgentCostModelRatio * otherMultiplier,
+	)
+	AdjustAgentPlatformQuota(bc.AgentId, platformQuota-bc.AgentPlatformQuota)
+	bc.AgentPlatformQuota = platformQuota
+	return clamp
+}
+
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) bool {
+func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int, additionalClamps ...*common.QuotaClamp) bool {
 	if totalTokens <= 0 {
 		return false
 	}
 
 	modelName := taskModelName(task)
 
-	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
-		return false
-	}
-
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
-		}
-	}
-	if group == "" {
-		return false
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
+	modelRatio := float64(0)
+	finalGroupRatio := float64(0)
+	billingContext := task.PrivateData.BillingContext
+	if billingContext != nil && billingContext.PricingResolved && !billingContext.PerCallBilling {
+		modelRatio = billingContext.ModelRatio
+		finalGroupRatio = billingContext.GroupRatio
 	} else {
+		var hasRatioSetting bool
+		modelRatio, hasRatioSetting, _ = ratio_setting.GetModelRatio(modelName)
+		if !hasRatioSetting || modelRatio <= 0 {
+			return false
+		}
+		group := task.Group
+		if group == "" {
+			user, err := model.GetUserById(task.UserId, false)
+			if err == nil {
+				group = user.Group
+			}
+		}
+		if group == "" {
+			return false
+		}
+		groupRatio := ratio_setting.GetGroupRatio(group)
+		userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
 		finalGroupRatio = groupRatio
+		if hasUserGroupRatio {
+			finalGroupRatio = userGroupRatio
+		}
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
@@ -376,6 +444,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+	clamps := append([]*common.QuotaClamp{clamp}, additionalClamps...)
+	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamps...)
 	return true
 }

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getUserQuotaDates } from '../api'
+import { getPlatformUsageSummary, getUserQuotaDates } from '../api'
 
 const { get } = vi.hoisted(() => ({
   get: vi.fn(),
@@ -49,5 +49,17 @@ describe('agent dashboard usage scope', () => {
     await getUserQuotaDates(params, false, false)
 
     expect(get).toHaveBeenCalledWith('/api/data/self', { params })
+  })
+
+  test('uses the platform endpoint for administrators', async () => {
+    await getUserQuotaDates(params, true)
+
+    expect(get).toHaveBeenCalledWith('/api/data', { params })
+  })
+
+  test('loads platform-wide overview totals from the admin endpoint', async () => {
+    await getPlatformUsageSummary()
+
+    expect(get).toHaveBeenCalledWith('/api/data/summary')
   })
 })

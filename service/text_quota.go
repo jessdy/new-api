@@ -457,7 +457,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	setAgentTextPlatformQuota(ctx, relayInfo, billingUsage, summary.IsClaudeUsageSemantic)
+	SetAgentTextPlatformQuota(ctx, relayInfo, billingUsage, summary.IsClaudeUsageSemantic)
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
@@ -552,7 +552,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	})
 }
 
-func setAgentTextPlatformQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, isClaudeUsageSemantic bool) {
+func SetAgentTextPlatformQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, isClaudeUsageSemantic bool) {
 	if relayInfo == nil || relayInfo.AgentId <= 0 {
 		return
 	}

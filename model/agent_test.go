@@ -1,15 +1,18 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -82,6 +85,167 @@ func TestAgentChannelSelectionAndPricing(t *testing.T) {
 	loaded, err = GetAgentById(agent.Id)
 	require.NoError(t, err)
 	assert.False(t, loaded.IsRequestAllowed())
+}
+
+func TestResolveEffectivePricingCatalogByRole(t *testing.T) {
+	newAgentTestDB(t)
+
+	owner := &User{
+		Username: "pricing-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "priceowner",
+	}
+	require.NoError(t, DB.Create(owner).Error)
+	agent := &Agent{
+		UserId:     owner.Id,
+		Name:       "pricing-agent",
+		InviteCode: "pricingagent",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	channel := &Channel{
+		Id:     901,
+		Name:   "pricing-channel",
+		Key:    "test-key",
+		Status: common.ChannelStatusEnabled,
+		Models: "model-a,model-b",
+		Group:  "default",
+	}
+	require.NoError(t, DB.Create(channel).Error)
+	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{channel.Id}))
+	require.NoError(t, UpsertAgentModelCost(agent.Id, "model-a", PricingValues{"ModelPrice": 0.25}))
+
+	ownerCatalog, err := ResolveEffectivePricingCatalog(owner.ToBaseUser(), []string{"model-a", "model-b"})
+	require.NoError(t, err)
+	assert.True(t, ownerCatalog["model-a"].Allowed)
+	assert.Equal(t, PricingSourceAgentCost, ownerCatalog["model-a"].Source)
+	assert.Equal(t, 0.25, ownerCatalog["model-a"].Pricing["ModelPrice"])
+	assert.False(t, ownerCatalog["model-b"].Allowed)
+	ownerModel, err := ResolveEffectiveModelPricing(owner.ToBaseUser(), "model-a", "model-a")
+	require.NoError(t, err)
+	assert.True(t, ownerModel.Allowed)
+	assert.Equal(t, 0.25, ownerModel.Pricing["ModelPrice"])
+	unpricedOwnerModel, err := ResolveEffectiveModelPricing(owner.ToBaseUser(), "model-b", "model-b")
+	require.NoError(t, err)
+	assert.False(t, unpricedOwnerModel.Allowed)
+
+	direct := &UserBase{Id: 902, Role: common.RoleAdminUser, Group: "default"}
+	directCatalog, err := ResolveEffectivePricingCatalog(direct, []string{"model-a", "model-b"})
+	require.NoError(t, err)
+	assert.True(t, directCatalog["model-a"].Allowed)
+	assert.True(t, directCatalog["model-b"].Allowed)
+	assert.Equal(t, PricingSourcePlatform, directCatalog["model-a"].Source)
+
+	member := &User{
+		Username: "pricing-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "pricemember",
+		AgentId:  agent.Id,
+	}
+	require.NoError(t, DB.Create(member).Error)
+	require.NoError(t, UpsertAgentModelPrice(&AgentModelPrice{
+		AgentId:       agent.Id,
+		Model:         "model-b",
+		DiscountRatio: 0.8,
+	}))
+	memberCatalog, err := ResolveEffectivePricingCatalog(member.ToBaseUser(), []string{"model-a", "model-b"})
+	require.NoError(t, err)
+	assert.Equal(t, PricingSourcePlatform, memberCatalog["model-b"].Source)
+	assert.Equal(t, 0.8, memberCatalog["model-b"].DiscountRatio)
+
+	require.NoError(t, ReplaceAgentUserModelSettings(agent.Id, member.Id, AgentUserModelSettingsPayload{
+		LimitEnabled: true,
+		Models: []AgentUserModelSettingInput{{
+			ModelName: "model-a",
+			Enabled:   true,
+			Pricing:   PricingValues{"ModelPrice": 0.5},
+		}},
+	}))
+	memberCatalog, err = ResolveEffectivePricingCatalog(member.ToBaseUser(), []string{"model-a", "model-b"})
+	require.NoError(t, err)
+	assert.True(t, memberCatalog["model-a"].Allowed)
+	assert.Equal(t, PricingSourceAgentUser, memberCatalog["model-a"].Source)
+	assert.Equal(t, 0.5, memberCatalog["model-a"].Pricing["ModelPrice"])
+	assert.Equal(t, float64(1), memberCatalog["model-a"].DiscountRatio)
+	assert.False(t, memberCatalog["model-b"].Allowed)
+}
+
+func TestResolveEffectivePricingCatalogExternalDatabases(t *testing.T) {
+	dialects := []struct {
+		name string
+		env  string
+		open func(string) gorm.Dialector
+	}{
+		{name: "mysql", env: "TEST_MYSQL_DSN", open: func(dsn string) gorm.Dialector { return mysql.Open(dsn) }},
+		{name: "postgres", env: "TEST_POSTGRES_DSN", open: func(dsn string) gorm.Dialector { return postgres.Open(dsn) }},
+	}
+	for _, dialect := range dialects {
+		t.Run(dialect.name, func(t *testing.T) {
+			dsn := strings.TrimSpace(os.Getenv(dialect.env))
+			if dsn == "" {
+				t.Skip(dialect.env + " is not configured")
+			}
+			db, err := gorm.Open(dialect.open(dsn), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, db.AutoMigrate(
+				&Agent{},
+				&AgentChannel{},
+				&AgentModelPrice{},
+				&AgentUserModelSetting{},
+				&User{},
+				&Channel{},
+			))
+			previous := DB
+			DB = db
+			t.Cleanup(func() { DB = previous })
+
+			suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+			owner := &User{
+				Username: "owner" + suffix[len(suffix)-8:],
+				Password: "placeholder",
+				Role:     common.RoleAgentUser,
+				Status:   common.UserStatusEnabled,
+				Group:    "default",
+				AffCode:  "o" + suffix[len(suffix)-8:],
+			}
+			require.NoError(t, DB.Create(owner).Error)
+			agent := &Agent{
+				UserId:     owner.Id,
+				Name:       "pricing-matrix",
+				InviteCode: "a" + suffix[len(suffix)-8:],
+				Status:     AgentStatusEnabled,
+			}
+			require.NoError(t, DB.Create(agent).Error)
+			channel := &Channel{
+				Name:   "pricing-matrix",
+				Key:    "test-key",
+				Status: common.ChannelStatusEnabled,
+				Models: "matrix-model",
+				Group:  "default",
+			}
+			require.NoError(t, DB.Create(channel).Error)
+			require.NoError(t, ReplaceAgentChannels(agent.Id, []int{channel.Id}))
+			require.NoError(t, UpsertAgentModelCost(agent.Id, "matrix-model", PricingValues{"ModelPrice": 0.2}))
+			t.Cleanup(func() {
+				DB.Where("agent_id = ?", agent.Id).Delete(&AgentModelPrice{})
+				DB.Where("agent_id = ?", agent.Id).Delete(&AgentChannel{})
+				DB.Delete(agent)
+				DB.Delete(channel)
+				DB.Delete(owner)
+			})
+
+			effective, err := ResolveEffectiveModelPricing(owner.ToBaseUser(), "matrix-model", "matrix-model")
+			require.NoError(t, err)
+			assert.True(t, effective.Allowed)
+			assert.Equal(t, 0.2, effective.Pricing["ModelPrice"])
+		})
+	}
 }
 
 func TestAgentInviteBinding(t *testing.T) {

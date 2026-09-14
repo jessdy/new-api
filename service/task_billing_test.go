@@ -55,11 +55,105 @@ func TestMain(m *testing.M) {
 		&model.UserSubscription{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
+		&model.Agent{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
 
 	os.Exit(m.Run())
+}
+
+func TestSettleAgentTaskCostAdjustsPersistedDebt(t *testing.T) {
+	truncate(t)
+	agent := &model.Agent{
+		UserId:         1001,
+		Name:           "task-cost-agent",
+		InviteCode:     "taskcost",
+		Status:         model.AgentStatusEnabled,
+		SettlementDebt: 100,
+	}
+	require.NoError(t, model.DB.Create(agent).Error)
+	expression := `tier("base", u("seconds") * 0.001)`
+	snapshot := &billingexpr.BillingSnapshot{
+		BillingMode:              "tiered_expr",
+		ModelName:                "task-cost-model",
+		ExprString:               expression,
+		ExprHash:                 billingexpr.ExprHashString(expression),
+		GroupRatio:               1,
+		EstimatedQuotaAfterGroup: 100,
+		QuotaPerUnit:             common.QuotaPerUnit,
+		ExprVersion:              billingexpr.ExprVersion(expression),
+		TaskUsageBilling:         true,
+		UsageFacts:               map[string]any{"seconds": 0.2},
+	}
+	task := &model.Task{
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{
+				AgentId:                 agent.Id,
+				AgentPlatformQuota:      100,
+				AgentCostTieredSnapshot: snapshot,
+			},
+		},
+	}
+
+	settleAgentTaskCost(context.Background(), task, map[string]any{"seconds": 0.4})
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(200), agent.SettlementDebt)
+	assert.Equal(t, 200, task.PrivateData.BillingContext.AgentPlatformQuota)
+
+	settleAgentTaskCost(context.Background(), task, map[string]any{"seconds": 0.1})
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(50), agent.SettlementDebt)
+	assert.Equal(t, 50, task.PrivateData.BillingContext.AgentPlatformQuota)
+}
+
+func TestRecalculateTaskQuotaByTokensUsesFrozenRolePricing(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1101, 9900)
+	agent := &model.Agent{
+		UserId:         1102,
+		Name:           "ratio-cost-agent",
+		InviteCode:     "ratiocost",
+		Status:         model.AgentStatusEnabled,
+		SettlementDebt: 25,
+	}
+	require.NoError(t, model.DB.Create(agent).Error)
+	task := &model.Task{
+		UserId: 1101,
+		Quota:  100,
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{
+				PricingResolved:     true,
+				ModelRatio:          2,
+				GroupRatio:          0.5,
+				OriginModelName:     "custom-role-model",
+				AgentId:             agent.Id,
+				AgentPlatformQuota:  25,
+				AgentCostModelRatio: 3,
+			},
+		},
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+
+	assert.Nil(t, settleAgentTaskTokenCost(task, 10))
+	assert.True(t, RecalculateTaskQuotaByTokens(context.Background(), task, 10))
+	assert.Equal(t, 10, task.Quota)
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(30), agent.SettlementDebt)
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1101).Error)
+	assert.Equal(t, 9990, user.Quota)
+
+	assert.Nil(t, recalculateAgentTaskCostByRetailRatio(task, 20))
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(30), agent.SettlementDebt)
+	assert.Equal(t, 30, task.PrivateData.BillingContext.AgentPlatformQuota)
+
+	task.PrivateData.BillingContext.AgentCostModelRatio = 0
+	task.PrivateData.BillingContext.AgentCostUsePrice = true
+	assert.Nil(t, recalculateAgentTaskCostByRetailRatio(task, 20))
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(30), agent.SettlementDebt)
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +167,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
+		model.DB.Exec("DELETE FROM agents")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM top_ups")
@@ -581,13 +676,22 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 	seedToken(t, tokenID, userID, "sk-midjourney", initialTokenQuota)
 	seedChannel(t, billingChannelID)
 	seedChannel(t, executionChannelID)
+	agent := &model.Agent{
+		UserId:     userID,
+		Name:       "midjourney-agent",
+		InviteCode: "midjourney-refund",
+		Status:     model.AgentStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(agent).Error)
 
 	relayInfo := &relaycommon.RelayInfo{
-		UserId:     userID,
-		TokenId:    tokenID,
-		TokenKey:   "sk-midjourney",
-		UserQuota:  initialUserQuota,
-		UsingGroup: "default",
+		UserId:        userID,
+		TokenId:       tokenID,
+		TokenKey:      "sk-midjourney",
+		UserQuota:     initialUserQuota,
+		UsingGroup:    "default",
+		AgentId:       agent.Id,
+		PlatformQuota: 1200,
 		ChannelMeta: &relaycommon.ChannelMeta{
 			ChannelId: billingChannelID,
 		},
@@ -617,6 +721,10 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 	assert.Equal(t, chargedQuota, persisted.Quota)
 	assert.Equal(t, tokenID, persisted.TokenId)
 	assert.Equal(t, billingChannelID, persisted.BillingChannelId)
+	assert.Equal(t, agent.Id, persisted.AgentId)
+	assert.Equal(t, 1200, persisted.AgentPlatformQuota)
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Equal(t, int64(1200), agent.SettlementDebt)
 
 	seedChargedAccounting(t, userID, billingChannelID, tokenID, chargedQuota, 1)
 
@@ -629,9 +737,12 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 	assert.Equal(t, 1, requestCount)
 	assert.Zero(t, getChannelUsedQuota(t, billingChannelID))
 	assert.Zero(t, getChannelUsedQuota(t, executionChannelID))
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Zero(t, agent.SettlementDebt)
 
 	persisted = getMidjourneyTask(t, task.Id)
 	assert.Zero(t, persisted.Quota)
+	assert.Zero(t, persisted.AgentPlatformQuota)
 	assert.Equal(t, tokenID, persisted.TokenId)
 	assert.Equal(t, billingChannelID, persisted.BillingChannelId)
 	log := getLastLog(t)
@@ -643,6 +754,8 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 
 	assert.True(t, RefundMidjourneyQuota(ctx, task, "duplicate poll"))
 	assert.Equal(t, int64(1), countLogs(t))
+	require.NoError(t, model.DB.First(agent, agent.Id).Error)
+	assert.Zero(t, agent.SettlementDebt)
 }
 
 func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {

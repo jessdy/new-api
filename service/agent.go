@@ -233,6 +233,17 @@ func AccrueAgentPlatformQuota(agentId int, platformQuota int) {
 	_ = model.AccrueAgentSettlementDebt(agentId, int64(platformQuota))
 }
 
+func AdjustAgentPlatformQuota(agentId int, delta int) {
+	if agentId <= 0 || delta == 0 {
+		return
+	}
+	if delta > 0 {
+		_ = model.AccrueAgentSettlementDebt(agentId, int64(delta))
+		return
+	}
+	_ = model.ReduceAgentSettlementDebt(agentId, int64(-delta))
+}
+
 func ResolveAgentChannelIds(agentId int) ([]int, error) {
 	ids, err := model.ListAgentChannelIds(agentId)
 	if err != nil {

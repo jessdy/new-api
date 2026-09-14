@@ -76,7 +76,12 @@ import {
   type DynamicPriceEntry,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getConfiguredGroupRatio,
+  getPricingMultiplier,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import {
   evaluateTaskUsageExamples,
@@ -668,7 +673,7 @@ function PriceSection(props: {
     showRechargePrice: props.showRechargePrice,
     priceRate: props.priceRate,
     usdExchangeRate: props.usdExchangeRate,
-    groupRatioMultiplier: 1,
+    groupRatioMultiplier: getPricingMultiplier(props.model),
   })
 
   const primaryPriceTypes: { label: string; type: PriceType }[] = [
@@ -1070,12 +1075,14 @@ function GroupPricingSection(props: {
       showRechargePrice,
       priceRate: props.priceRate,
       usdExchangeRate: props.usdExchangeRate,
-      groupRatioMultiplier: 1,
+      groupRatioMultiplier: getPricingMultiplier(props.model),
       usageSchema: props.model.billing_usage_schema,
     })
     const formattedPricesByGroup = new Map(
       availableGroups.map((group) => {
-        const ratio = props.groupRatio[group] || 1
+        const ratio =
+          getConfiguredGroupRatio(props.groupRatio, group) *
+          getPricingMultiplier(props.model)
         return [
           group,
           getDynamicFormattedPricesByTier(dynamicTiers, {
@@ -1096,7 +1103,9 @@ function GroupPricingSection(props: {
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <div className='space-y-3'>
           {availableGroups.map((group) => {
-            const ratio = props.groupRatio[group] || 1
+            const ratio =
+              getConfiguredGroupRatio(props.groupRatio, group) *
+              getPricingMultiplier(props.model)
             const formattedPricesByTier =
               formattedPricesByGroup.get(group) ??
               new Map<DynamicPricingTier, Map<string, string>>()
@@ -1296,7 +1305,8 @@ function GroupPricingSection(props: {
             header: t('Ratio'),
             className: thClass,
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
+            cell: (group) =>
+              `${getConfiguredGroupRatio(props.groupRatio, group) * getPricingMultiplier(props.model)}x`,
           },
           ...(isTokenBased
             ? [

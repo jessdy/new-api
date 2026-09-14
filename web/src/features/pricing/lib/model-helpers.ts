@@ -50,6 +50,15 @@ export function getConfiguredGroupRatio(
   return typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : 1
 }
 
+export function getPricingMultiplier(model: PricingModel): number {
+  const multiplier = model.pricing_multiplier
+  return typeof multiplier === 'number' &&
+    Number.isFinite(multiplier) &&
+    multiplier >= 0
+    ? multiplier
+    : 1
+}
+
 /**
  * Resolve the group ratio used by model square summary prices.
  *
@@ -71,11 +80,14 @@ export function getDisplayGroupRatio(
     selectedGroup !== FILTER_ALL &&
     modelEnableGroups.includes(selectedGroup)
   ) {
-    return getConfiguredGroupRatio(groupRatio, selectedGroup)
+    return (
+      getConfiguredGroupRatio(groupRatio, selectedGroup) *
+      getPricingMultiplier(model)
+    )
   }
 
   if (modelEnableGroups.length === 0) {
-    return 1
+    return getPricingMultiplier(model)
   }
 
   let minRatio = Number.POSITIVE_INFINITY
@@ -91,7 +103,8 @@ export function getDisplayGroupRatio(
     }
   }
 
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  const resolvedRatio = minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  return resolvedRatio * getPricingMultiplier(model)
 }
 
 /**

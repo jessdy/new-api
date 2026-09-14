@@ -248,29 +248,22 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.OriginModelName = modelName
 	var priceData types.PriceData
 	var err error
-	useTiered := billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeTieredExpr
-	var exprStr string
-	var exists bool
-	if useTiered {
-		exprStr, exists = billing_setting.GetBillingExpr(modelName)
-	} else if info.IsModelMapped {
-		if billing_setting.GetBillingMode(info.UpstreamModelName) == billing_setting.BillingModeTieredExpr {
-			if tailExpr, tailOK := billing_setting.GetBillingExpr(info.UpstreamModelName); tailOK && strings.TrimSpace(tailExpr) != "" {
-				exprStr = tailExpr
-				exists = true
-				useTiered = true
-			}
-		}
+	pricingModelName := info.GetBillingModelName()
+	effective, billingMode, exprStr, err := helper.EffectiveBillingConfig(info, pricingModelName)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
-	if useTiered {
+	if !effective.Allowed {
+		return nil, service.TaskErrorWrapper(fmt.Errorf("model %s is not priced for this account", modelName), "model_price_error", http.StatusBadRequest)
+	}
+	useTiered := billingMode == billing_setting.BillingModeTieredExpr
+	exists := strings.TrimSpace(exprStr) != ""
+	var facts map[string]any
+	if useTiered || helper.AgentTaskCostUsesTiered(info) {
 		provider, supported := adaptor.(channel.TaskUsageFactsProvider)
-		if billingexpr.UsesFixedPricing(exprStr) {
-			return nil, service.TaskErrorWrapper(fmt.Errorf("fixed pricing is not supported for task usage expressions"), "model_price_error", http.StatusBadRequest)
+		if !supported {
+			return nil, service.TaskErrorWrapper(fmt.Errorf("task model %s has no usage meter", modelName), "model_price_error", http.StatusBadRequest)
 		}
-		if !exists || !supported {
-			return nil, service.TaskErrorWrapper(fmt.Errorf("task model %s has no usage expression or meter", modelName), "model_price_error", http.StatusBadRequest)
-		}
-		var facts map[string]any
 		if validatedProvider, ok := adaptor.(channel.TaskValidatedUsageFactsProvider); ok {
 			facts, err = validatedProvider.ExtractUsageFactsValidated(c, info)
 			if err != nil {
@@ -278,6 +271,17 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			}
 		} else {
 			facts = provider.ExtractUsageFacts(c, info)
+		}
+		if err := helper.PrepareAgentTaskCostPricing(info, facts); err != nil {
+			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		}
+	}
+	if useTiered {
+		if billingexpr.UsesFixedPricing(exprStr) {
+			return nil, service.TaskErrorWrapper(fmt.Errorf("fixed pricing is not supported for task usage expressions"), "model_price_error", http.StatusBadRequest)
+		}
+		if !exists {
+			return nil, service.TaskErrorWrapper(fmt.Errorf("task model %s has no usage expression or meter", modelName), "model_price_error", http.StatusBadRequest)
 		}
 		cost, trace, runErr := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts})
 		if runErr != nil || cost < 0 {
@@ -290,7 +294,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		quota, clamp := common.QuotaRoundChecked(cost * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 		noteTaskQuotaClamp(info, clamp)
 		priceData = types.PriceData{Quota: quota, QuotaToPreConsume: quota, GroupRatioInfo: groupRatioInfo}
-		info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{BillingMode: billing_setting.BillingModeTieredExpr, ModelName: modelName, ExprString: exprStr, ExprHash: billingexpr.ExprHashString(exprStr), GroupRatio: groupRatioInfo.GroupRatio, EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit, EstimatedQuotaAfterGroup: quota, EstimatedTier: trace.MatchedTier, QuotaPerUnit: common.QuotaPerUnit, ExprVersion: billingexpr.ExprVersion(exprStr), TaskUsageBilling: true, UsageFacts: facts}
+		info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{BillingMode: billing_setting.BillingModeTieredExpr, ModelName: pricingModelName, ExprString: exprStr, ExprHash: billingexpr.ExprHashString(exprStr), GroupRatio: groupRatioInfo.GroupRatio, EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit, EstimatedQuotaAfterGroup: quota, EstimatedTier: trace.MatchedTier, QuotaPerUnit: common.QuotaPerUnit, ExprVersion: billingexpr.ExprVersion(exprStr), TaskUsageBilling: true, UsageFacts: facts}
 	} else {
 		priceData, err = helper.ModelPriceHelperPerCall(c, info)
 		if err != nil {
@@ -326,6 +330,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.PriceData.Quota = quota
 		noteTaskQuotaClamp(info, clamp)
 	}
+	helper.SetAgentTaskPlatformQuota(info)
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {

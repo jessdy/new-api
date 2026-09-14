@@ -24,6 +24,7 @@ import { parseTiersFromExpr } from '../lib/billing-expr'
 import { getBillingModeLabelKey } from '../lib/billing-mode'
 import {
   getCardExamplePrice,
+  getDynamicDisplayGroupRatio,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
   getTaskUsagePriceUnitLabelKey,
@@ -31,6 +32,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { isTokenBasedModel } from '../lib/model-helpers'
+import { formatPrice, formatRequestPrice } from '../lib/price'
 import type { PricingModel } from '../types'
 
 function pricingModel(overrides: Partial<PricingModel>): PricingModel {
@@ -54,6 +56,27 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  test('applies the model settlement multiplier to group prices', () => {
+    const tokenModel = pricingModel({
+      group_ratio: { default: 2 },
+      pricing_multiplier: 0.5,
+    })
+    expect(getDynamicDisplayGroupRatio(tokenModel, 'default')).toBe(1)
+    expect(formatPrice(tokenModel, 'input', 'M', false, 1, 1, 'default')).toBe(
+      '$2'
+    )
+
+    const requestModel = pricingModel({
+      quota_type: 1,
+      model_price: 0.1,
+      group_ratio: { default: 2 },
+      pricing_multiplier: 0.5,
+    })
+    expect(formatRequestPrice(requestModel, false, 1, 1, 'default')).toBe(
+      '$0.1'
+    )
+  })
+
   test('keeps request prices unchanged by token units and separates mixed billing units', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',

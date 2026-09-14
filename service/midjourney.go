@@ -82,6 +82,11 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		}
 		return false, billingErr
 	}
+	accrueAgentSettlement(relayInfo, task.Quota)
+	if relayInfo.AgentId > 0 && relayInfo.PlatformQuota > 0 {
+		task.AgentId = relayInfo.AgentId
+		task.AgentPlatformQuota = relayInfo.PlatformQuota
+	}
 
 	task.TokenId = 0
 	if result.TokenApplied {
@@ -117,6 +122,10 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	billingChannelId := task.GetBillingChannelId()
 	model.UpdateUserUsedQuota(task.UserId, -quota)
 	model.UpdateChannelUsedQuota(billingChannelId, -quota)
+	if task.AgentId > 0 && task.AgentPlatformQuota > 0 {
+		AdjustAgentPlatformQuota(task.AgentId, -task.AgentPlatformQuota)
+		task.AgentPlatformQuota = 0
+	}
 	other := model.NewLogOther()
 	other.SetPublic("task_id", task.MjId)
 	other.SetPublic("reason", reason)

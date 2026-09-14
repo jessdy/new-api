@@ -257,6 +257,49 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestCalculateAudioQuotaUsesEffectivePricingRatios(t *testing.T) {
+	quota, clamp := calculateAudioQuota(QuotaInfo{
+		InputDetails: TokenDetails{
+			TextTokens:  10,
+			AudioTokens: 10,
+		},
+		OutputDetails: TokenDetails{
+			TextTokens:  10,
+			AudioTokens: 10,
+		},
+		ModelRatio:           2,
+		CompletionRatio:      3,
+		AudioRatio:           4,
+		AudioCompletionRatio: 5,
+		GroupRatio:           0.5,
+	})
+	assert.Nil(t, clamp)
+	assert.Equal(t, 280, quota)
+}
+
+func TestBuildRealtimeTieredTokenParamsAvoidsAudioDoubleCount(t *testing.T) {
+	usage := &dto.RealtimeUsage{
+		InputTokens:  100,
+		OutputTokens: 60,
+		InputTokenDetails: dto.InputTokenDetails{
+			AudioTokens: 40,
+		},
+		OutputTokenDetails: dto.OutputTokenDetails{
+			AudioTokens: 20,
+		},
+	}
+	params := buildRealtimeTieredTokenParams(usage, `tier("audio", p * 1 + c * 2 + ai * 3 + ao * 4)`)
+	assert.Equal(t, float64(60), params.P)
+	assert.Equal(t, float64(40), params.C)
+	assert.Equal(t, float64(100), params.Len)
+	assert.Equal(t, float64(40), params.AI)
+	assert.Equal(t, float64(20), params.AO)
+
+	fallback := buildRealtimeTieredTokenParams(usage, `tier("base", p * 1 + c * 2)`)
+	assert.Equal(t, float64(100), fallback.P)
+	assert.Equal(t, float64(60), fallback.C)
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -1434,7 +1477,7 @@ func TestSetAgentTextPlatformQuotaUsesIndependentCostPricing(t *testing.T) {
 			},
 		}
 
-		setAgentTextPlatformQuota(ctx, relayInfo, usage, false)
+		SetAgentTextPlatformQuota(ctx, relayInfo, usage, false)
 
 		assert.Equal(t, 260, relayInfo.PlatformQuota)
 	})
@@ -1454,7 +1497,7 @@ func TestSetAgentTextPlatformQuotaUsesIndependentCostPricing(t *testing.T) {
 			},
 		}
 
-		setAgentTextPlatformQuota(ctx, relayInfo, usage, false)
+		SetAgentTextPlatformQuota(ctx, relayInfo, usage, false)
 
 		expected, err := billingexpr.QuotaRoundStrict(240.0 / 1_000_000 * common.QuotaPerUnit)
 		require.NoError(t, err)

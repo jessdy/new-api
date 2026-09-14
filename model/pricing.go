@@ -40,6 +40,77 @@ type Pricing struct {
 	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 	BillingUsageExamples   []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 	PricingVersion         string                               `json:"pricing_version,omitempty"`
+	PricingMultiplier      float64                              `json:"pricing_multiplier,omitempty"`
+}
+
+func pricingValueFloat(values PricingValues, key string) (float64, bool) {
+	raw, ok := values[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return value, true
+	case float32:
+		return float64(value), true
+	case int:
+		return float64(value), true
+	case int64:
+		return float64(value), true
+	default:
+		return 0, false
+	}
+}
+
+func (pricing Pricing) WithPricingValues(values PricingValues) Pricing {
+	if len(values) == 0 {
+		return pricing
+	}
+	_, hasConfiguredMode := values["billing_setting.billing_mode"]
+	if value, ok := pricingValueFloat(values, "ModelPrice"); ok {
+		pricing.ModelPrice = value
+		pricing.QuotaType = 1
+		if !hasConfiguredMode {
+			pricing.BillingMode = ""
+			pricing.BillingExpr = ""
+		}
+	} else if value, ok := pricingValueFloat(values, "ModelRatio"); ok {
+		pricing.ModelRatio = value
+		pricing.QuotaType = 0
+		if !hasConfiguredMode {
+			pricing.BillingMode = ""
+			pricing.BillingExpr = ""
+		}
+	}
+	if value, ok := pricingValueFloat(values, "CompletionRatio"); ok {
+		pricing.CompletionRatio = value
+	}
+	if value, ok := pricingValueFloat(values, "CacheRatio"); ok {
+		pricing.CacheRatio = &value
+	}
+	if value, ok := pricingValueFloat(values, "CreateCacheRatio"); ok {
+		pricing.CreateCacheRatio = &value
+	}
+	if value, ok := pricingValueFloat(values, "ImageRatio"); ok {
+		pricing.ImageRatio = &value
+	}
+	if value, ok := pricingValueFloat(values, "AudioRatio"); ok {
+		pricing.AudioRatio = &value
+	}
+	if value, ok := pricingValueFloat(values, "AudioCompletionRatio"); ok {
+		pricing.AudioCompletionRatio = &value
+	}
+	if mode, ok := values["billing_setting.billing_mode"].(string); ok {
+		pricing.BillingMode = mode
+		if mode != billing_setting.BillingModeTieredExpr {
+			pricing.BillingExpr = ""
+		}
+	}
+	if expression, ok := values["billing_setting.billing_expr"].(string); ok {
+		pricing.BillingExpr = expression
+	}
+	pricing.PricingVersion = ModelPricingVersion(values)
+	return pricing
 }
 
 type PricingVendor struct {
@@ -322,6 +393,7 @@ func updatePricing() {
 			ModelName:              model,
 			EnableGroup:            groups.Items(),
 			SupportedEndpointTypes: modelSupportEndpointTypes[model],
+			PricingMultiplier:      1,
 		}
 
 		// 补充模型元数据（描述、标签、供应商、状态）

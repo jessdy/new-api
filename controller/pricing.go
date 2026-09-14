@@ -2,6 +2,7 @@ package controller
 
 import (
 	"maps"
+	"slices"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -36,7 +37,8 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 }
 
 func GetPricing(c *gin.Context) {
-	pricing := model.GetPricing()
+	basePricing := model.GetPricing()
+	pricing := append([]model.Pricing(nil), basePricing...)
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
@@ -72,12 +74,36 @@ func GetPricing(c *gin.Context) {
 	} else {
 		usableGroup = service.GetUserUsableGroups("")
 	}
-	if user == nil || user.AgentId <= 0 {
-		pricing = filterPricingByUsableGroups(pricing, usableGroup)
-		for name := range groupRatio {
-			if _, ok := usableGroup[name]; !ok {
-				delete(groupRatio, name)
+	modelNames := make([]string, len(pricing))
+	for i := range pricing {
+		modelNames[i] = pricing[i].ModelName
+	}
+	effectivePricing, err := model.ResolveEffectivePricingCatalog(user, modelNames)
+	if err != nil {
+		c.JSON(500, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	filteredPricing := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		effective := effectivePricing[item.ModelName]
+		if !effective.Allowed {
+			continue
+		}
+		item = item.WithPricingValues(effective.Pricing)
+		item.PricingMultiplier = effective.DiscountRatio
+		if common.StringsContains(item.EnableGroup, "all") {
+			item.EnableGroup = make([]string, 0, len(usableGroup))
+			for group := range usableGroup {
+				item.EnableGroup = append(item.EnableGroup, group)
 			}
+			slices.Sort(item.EnableGroup)
+		}
+		filteredPricing = append(filteredPricing, item)
+	}
+	pricing = filterPricingByUsableGroups(filteredPricing, usableGroup)
+	for name := range groupRatio {
+		if _, ok := usableGroup[name]; !ok {
+			delete(groupRatio, name)
 		}
 	}
 
