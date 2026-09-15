@@ -417,7 +417,12 @@ export function Dashboard() {
               </FadeIn>
               <FadeIn delay={0.05}>
                 <Suspense fallback={<ModelUsageTableFallback />}>
-                  <LazyModelUsageTable data={modelData} loading={dataLoading} />
+                  <LazyModelUsageTable
+                    data={modelData}
+                    loading={dataLoading}
+                    filters={modelFilters}
+                    aggregateAgent={isAgent && !onlySelf}
+                  />
                 </Suspense>
               </FadeIn>
               {isAdmin && (

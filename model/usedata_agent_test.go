@@ -169,3 +169,51 @@ func TestGetPlatformUsageSummaryAggregatesAllNonDeletedUsers(t *testing.T) {
 	assert.Equal(t, int64(300), summary.UsedQuota)
 	assert.Equal(t, int64(5), summary.RequestCount)
 }
+
+func TestGetModelBillingLogsForAgentUsers(t *testing.T) {
+	db := newAgentTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	previousLogDB := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = previousLogDB })
+
+	agent := &Agent{
+		UserId:     101,
+		Name:       "billing-agent",
+		InviteCode: "billingagent",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, DB.Create(&User{
+		Id: 201, Username: "agent-user", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "agentuser", AgentId: agent.Id,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 202, Username: "platform-user", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "platformuser",
+	}).Error)
+	userOther := common.MapToJsonStr(map[string]any{
+		"model_ratio": 1.0,
+		"admin_info":  map[string]any{"use_channel": []int{1}},
+	})
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{UserId: 201, Username: "agent-user", TokenName: "private-token", Ip: "192.0.2.1", Type: LogTypeConsume, ModelName: "glm-5.3", CreatedAt: 1000, Quota: 10, Other: userOther},
+		{UserId: 201, Username: "agent-user", Type: LogTypeConsume, ModelName: "other", CreatedAt: 1000, Quota: 20, Other: userOther},
+		{UserId: 202, Username: "platform-user", Type: LogTypeConsume, ModelName: "glm-5.3", CreatedAt: 1000, Quota: 30, Other: userOther},
+	}).Error)
+
+	userIDs, err := ListUserIDsByAgentID(agent.Id)
+	require.NoError(t, err)
+	logs, total, err := GetAgentModelBillingLogs(userIDs, 900, 1100, "glm-5.3", 0, 20)
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	assert.Equal(t, int64(1), total)
+	assert.Equal(t, 201, logs[0].UserId)
+	assert.Empty(t, logs[0].TokenName)
+	assert.Empty(t, logs[0].Ip)
+
+	other, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	assert.Contains(t, other, "model_ratio")
+	assert.NotContains(t, other, "admin_info")
+}

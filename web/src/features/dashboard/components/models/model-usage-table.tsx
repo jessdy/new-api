@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ListTree } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -25,22 +25,47 @@ import {
   staticDataTableClassNames,
   type StaticDataTableColumn,
 } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
 import { IconBadge } from '@/components/ui/icon-badge'
+import { getDefaultDays } from '@/features/dashboard/lib/filters'
 import {
   aggregateModelUsage,
   type ModelUsageSummary,
 } from '@/features/dashboard/lib/stats'
-import type { QuotaDataItem } from '@/features/dashboard/types'
+import type {
+  DashboardFilters,
+  QuotaDataItem,
+} from '@/features/dashboard/types'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import { ROLE } from '@/lib/roles'
+import { computeTimeRange } from '@/lib/time'
+import { useAuthStore } from '@/stores/auth-store'
+
+import { ModelBillingDetailsDialog } from './model-billing-details-dialog'
 
 interface ModelUsageTableProps {
   data: QuotaDataItem[]
   loading?: boolean
+  filters?: DashboardFilters
+  aggregateAgent?: boolean
 }
 
 export function ModelUsageTable(props: ModelUsageTableProps) {
   const { t } = useTranslation()
+  const userRole = useAuthStore((state) => state.auth.user?.role)
+  const [billingModel, setBillingModel] = useState<string | null>(null)
+  const timeRange = computeTimeRange(
+    getDefaultDays(props.filters?.time_granularity),
+    props.filters?.start_timestamp,
+    props.filters?.end_timestamp
+  )
+  let billingScope: 'admin' | 'agent' | 'self' = 'self'
+  if (userRole != null && userRole >= ROLE.ADMIN) {
+    billingScope = 'admin'
+  } else if (props.aggregateAgent) {
+    billingScope = 'agent'
+  }
   const rows = useMemo(
     () => (props.loading ? [] : aggregateModelUsage(props.data)),
     [props.data, props.loading]
@@ -92,7 +117,17 @@ export function ModelUsageTable(props: ModelUsageTableProps) {
         header: t('Billing'),
         className: staticDataTableClassNames.compactHeaderCellRight,
         cellClassName: staticDataTableClassNames.compactNumericCell,
-        cell: (row) => formatQuota(row.quota),
+        cell: (row) => (
+          <Button
+            variant='link'
+            size='sm'
+            className='h-auto p-0 font-semibold tabular-nums underline decoration-dotted underline-offset-4'
+            aria-label={`${t('Billing Details')}: ${row.modelName}`}
+            onClick={() => setBillingModel(row.modelName)}
+          >
+            {formatQuota(row.quota)}
+          </Button>
+        ),
       },
     ],
     [t]
@@ -115,6 +150,23 @@ export function ModelUsageTable(props: ModelUsageTableProps) {
         emptyContent={t(props.loading ? 'Loading' : 'No data')}
         headerRowClassName={staticDataTableClassNames.mutedHeaderRow}
       />
+      {billingModel ? (
+        <ModelBillingDetailsDialog
+          key={billingModel}
+          modelName={billingModel}
+          startTimestamp={timeRange.start_timestamp}
+          endTimestamp={timeRange.end_timestamp}
+          scope={billingScope}
+          isRoot={userRole === ROLE.SUPER_ADMIN}
+          username={
+            billingScope === 'admin' ? props.filters?.username : undefined
+          }
+          open
+          onOpenChange={(open) => {
+            if (!open) setBillingModel(null)
+          }}
+        />
+      ) : null}
     </section>
   )
 }

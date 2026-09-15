@@ -609,6 +609,44 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	return logs, total, err
 }
 
+func GetAgentModelBillingLogs(userIDs []int, startTimestamp int64, endTimestamp int64, modelName string, startIdx int, num int) (logs []*Log, total int64, err error) {
+	if len(userIDs) == 0 {
+		return []*Log{}, 0, nil
+	}
+	tx := LOG_DB.Where("logs.user_id IN ? AND logs.type = ?", userIDs, LogTypeConsume)
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
+		return nil, 0, err
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error; err != nil {
+		common.SysError("failed to count model billing logs: " + err.Error())
+		return nil, 0, errors.New("查询计费日志失败")
+	}
+	order := "logs.id desc"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("logs.")
+	}
+	if err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error; err != nil {
+		common.SysError("failed to query model billing logs: " + err.Error())
+		return nil, 0, errors.New("查询计费日志失败")
+	}
+	formatUserLogs(logs, startIdx)
+	for i := range logs {
+		logs[i].Content = ""
+		logs[i].TokenName = ""
+		logs[i].TokenId = 0
+		logs[i].Ip = ""
+		logs[i].RequestId = ""
+		logs[i].UpstreamRequestId = ""
+	}
+	return logs, total, nil
+}
+
 type Stat struct {
 	Quota int `json:"quota"`
 	Rpm   int `json:"rpm"`

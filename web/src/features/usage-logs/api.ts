@@ -79,6 +79,13 @@ export const getUserLogs = (
   params: Omit<GetLogsParams, 'username' | 'channel'> = {}
 ) => fetchLogs('/api/log', params, false)
 
+export const getAgentModelBillingLogs = (
+  params: Pick<
+    GetLogsParams,
+    'p' | 'page_size' | 'model_name' | 'start_timestamp' | 'end_timestamp'
+  >
+) => fetchLogs('/api/log/agent/billing', params, true)
+
 export const getLogStats = (params: GetLogStatsParams = {}) =>
   fetchLogStats('/api/log', params, true)
 

@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { getAgentModelBillingLogs } from '@/features/usage-logs/api'
+
 import { getPlatformUsageSummary, getUserQuotaDates } from '../api'
 
 const { get } = vi.hoisted(() => ({
@@ -61,5 +63,19 @@ describe('agent dashboard usage scope', () => {
     await getPlatformUsageSummary()
 
     expect(get).toHaveBeenCalledWith('/api/data/summary')
+  })
+
+  test('loads downstream user billing records from the agent endpoint', async () => {
+    await getAgentModelBillingLogs({
+      p: 1,
+      page_size: 20,
+      model_name: 'glm-5.3',
+      start_timestamp: 1,
+      end_timestamp: 2,
+    })
+
+    expect(get).toHaveBeenCalledWith(
+      '/api/log/agent/billing?p=1&page_size=20&model_name=glm-5.3&start_timestamp=1&end_timestamp=2'
+    )
   })
 })

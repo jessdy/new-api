@@ -16,12 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, test } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { getUserLogs } from '@/features/usage-logs/api'
+import { formatLogQuota } from '@/lib/format'
 
 import { ModelUsageTable } from '../model-usage-table'
 
-afterEach(cleanup)
+vi.mock('@/features/usage-logs/api', () => ({
+  getAgentModelBillingLogs: vi.fn(),
+  getAllLogs: vi.fn(),
+  getUserLogs: vi.fn(),
+}))
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe('model usage table', () => {
   test('shows one aggregated row per model from the current filtered data', () => {
@@ -89,5 +103,88 @@ describe('model usage table', () => {
 
     expect(screen.queryByText('gpt-a')).toBeNull()
     expect(screen.getByText('gpt-b')).toBeTruthy()
+  })
+
+  test('opens the exact calculation details for a selected billing record', async () => {
+    vi.mocked(getUserLogs).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 7,
+            user_id: 11,
+            created_at: 1000,
+            type: 2,
+            content: '',
+            username: 'dashboard-user',
+            token_name: '',
+            model_name: 'gpt-a',
+            quota: 12,
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            use_time: 1,
+            is_stream: false,
+            channel: 0,
+            channel_name: '',
+            token_id: 0,
+            group: 'default',
+            ip: '',
+            other: JSON.stringify({
+              model_ratio: 1,
+              completion_ratio: 2,
+              group_ratio: 1,
+            }),
+            request_id: 'req-7',
+            upstream_request_id: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelUsageTable
+          data={[
+            {
+              created_at: 1000,
+              model_name: 'gpt-a',
+              count: 1,
+              prompt_tokens: 100,
+              completion_tokens: 20,
+              cache_tokens: 0,
+              quota: 12,
+            },
+          ]}
+          filters={{
+            start_timestamp: new Date(900 * 1000),
+            end_timestamp: new Date(1100 * 1000),
+          }}
+        />
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'Billing Details: gpt-a' })
+    )
+
+    expect(await screen.findByText('Billing Details · gpt-a')).toBeTruthy()
+    expect(getUserLogs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 2,
+        model_name: 'gpt-a',
+        start_timestamp: 900,
+        end_timestamp: 1100,
+      })
+    )
+
+    await user.click(screen.getByRole('button', { name: formatLogQuota(12) }))
+    expect(await screen.findByText('Log Details')).toBeTruthy()
+    expect(screen.getByText('req-7')).toBeTruthy()
   })
 })

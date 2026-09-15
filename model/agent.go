@@ -370,6 +370,19 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 	return items, total, nil
 }
 
+func ListUserIDsByAgentID(agentId int) ([]int, error) {
+	agent, err := GetAgentById(agentId)
+	if err != nil {
+		return nil, err
+	}
+	if err := AttachInvitedUsersToAgent(agent); err != nil {
+		return nil, err
+	}
+	var userIDs []int
+	err = DB.Model(&User{}).Where("agent_id = ?", agentId).Pluck("id", &userIDs).Error
+	return userIDs, err
+}
+
 func GetEnabledAgentById(id int) (*Agent, error) {
 	agent, err := GetAgentById(id)
 	if err != nil {
