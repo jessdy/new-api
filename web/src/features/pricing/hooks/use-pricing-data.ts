@@ -28,11 +28,18 @@ import { getPricing } from '../api'
 export function usePricingData(enabled = true) {
   const { status } = useStatus()
   const user = useAuthStore((state) => state.auth.user)
+  const sessionId = useAuthStore((state) => state.auth.session?.sid)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pricing', user?.id ?? 'guest', user?.role ?? 0],
+    queryKey: [
+      'pricing',
+      user?.id ?? 'guest',
+      user?.role ?? 0,
+      sessionId ?? 'anonymous',
+    ],
     queryFn: async () => requireServerSuccess(await getPricing()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     enabled,
   })
 
