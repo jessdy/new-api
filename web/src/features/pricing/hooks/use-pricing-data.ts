@@ -37,7 +37,7 @@ export function usePricingData(enabled = true) {
       user?.role ?? 0,
       sessionId ?? 'anonymous',
     ],
-    queryFn: async () => requireServerSuccess(await getPricing()),
+    queryFn: async () => requireServerSuccess(await getPricing(user != null)),
     staleTime: 0,
     refetchOnMount: 'always',
     enabled,

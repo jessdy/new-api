@@ -25,7 +25,9 @@ import type { PricingData } from './types'
 // ----------------------------------------------------------------------------
 
 // Get model pricing data
-export async function getPricing(): Promise<PricingData> {
-  const res = await api.get('/api/pricing')
+export async function getPricing(authenticated = false): Promise<PricingData> {
+  const res = await api.get(
+    authenticated ? '/api/pricing/self' : '/api/pricing'
+  )
   return res.data
 }

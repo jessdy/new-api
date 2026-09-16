@@ -23,11 +23,14 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
-import { getPricing } from '../api'
 import { usePricingData } from '../hooks/use-pricing-data'
 
-vi.mock('../api', () => ({
-  getPricing: vi.fn(),
+const { get } = vi.hoisted(() => ({
+  get: vi.fn(),
+}))
+
+vi.mock('@/lib/api', () => ({
+  api: { get },
 }))
 
 vi.mock('@/hooks/use-status', () => ({
@@ -63,44 +66,48 @@ describe('pricing data freshness', () => {
         bootstrapState: 'complete',
       },
     })
-    vi.mocked(getPricing)
+    get
       .mockResolvedValueOnce({
-        success: true,
-        data: [
-          {
-            id: 1,
-            model_name: 'glm-5.3',
-            quota_type: 0,
-            model_ratio: 1,
-            model_price: 0,
-            completion_ratio: 1,
-            enable_groups: ['default'],
-          },
-        ],
-        vendors: [],
-        group_ratio: { default: 1 },
-        usable_group: { default: { desc: '', ratio: 1 } },
-        supported_endpoint: {},
-        auto_groups: [],
+        data: {
+          success: true,
+          data: [
+            {
+              id: 1,
+              model_name: 'glm-5.3',
+              quota_type: 0,
+              model_ratio: 1,
+              model_price: 0,
+              completion_ratio: 1,
+              enable_groups: ['default'],
+            },
+          ],
+          vendors: [],
+          group_ratio: { default: 1 },
+          usable_group: { default: { desc: '', ratio: 1 } },
+          supported_endpoint: {},
+          auto_groups: [],
+        },
       })
       .mockResolvedValueOnce({
-        success: true,
-        data: [
-          {
-            id: 1,
-            model_name: 'glm-5.3',
-            quota_type: 0,
-            model_ratio: 0.5,
-            model_price: 0,
-            completion_ratio: 1,
-            enable_groups: ['default'],
-          },
-        ],
-        vendors: [],
-        group_ratio: { default: 1 },
-        usable_group: { default: { desc: '', ratio: 1 } },
-        supported_endpoint: {},
-        auto_groups: [],
+        data: {
+          success: true,
+          data: [
+            {
+              id: 1,
+              model_name: 'glm-5.3',
+              quota_type: 0,
+              model_ratio: 0.5,
+              model_price: 0,
+              completion_ratio: 1,
+              enable_groups: ['default'],
+            },
+          ],
+          vendors: [],
+          group_ratio: { default: 1 },
+          usable_group: { default: { desc: '', ratio: 1 } },
+          supported_endpoint: {},
+          auto_groups: [],
+        },
       })
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -120,6 +127,8 @@ describe('pricing data freshness', () => {
     await waitFor(() =>
       expect(second.result.current.models[0]?.model_ratio).toBe(0.5)
     )
-    expect(getPricing).toHaveBeenCalledTimes(2)
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(get).toHaveBeenNthCalledWith(1, '/api/pricing/self')
+    expect(get).toHaveBeenNthCalledWith(2, '/api/pricing/self')
   })
 })

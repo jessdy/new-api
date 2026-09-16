@@ -46,24 +46,26 @@ func GetPricing(c *gin.Context) {
 	var user *model.UserBase
 	if exists {
 		cached, err := model.GetUserCache(userId.(int))
-		if err == nil {
-			user = cached
-			if cached.AgentId > 0 {
-				view, viewErr := model.GetAgentGroupPricingView(cached.AgentId)
-				if viewErr == nil {
-					groupRatio = maps.Clone(view.GroupRatio)
-					for g := range groupRatio {
-						if ratio, ok := service.GetAgentGroupGroupRatio(cached.AgentId, cached.Group, g); ok {
-							groupRatio[g] = ratio
-						}
-					}
-				}
-			} else {
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		user = cached
+		if cached.AgentId > 0 {
+			view, viewErr := model.GetAgentGroupPricingView(cached.AgentId)
+			if viewErr == nil {
+				groupRatio = maps.Clone(view.GroupRatio)
 				for g := range groupRatio {
-					ratio, ok := ratio_setting.GetGroupGroupRatio(cached.Group, g)
-					if ok {
+					if ratio, ok := service.GetAgentGroupGroupRatio(cached.AgentId, cached.Group, g); ok {
 						groupRatio[g] = ratio
 					}
+				}
+			}
+		} else {
+			for g := range groupRatio {
+				ratio, ok := ratio_setting.GetGroupGroupRatio(cached.Group, g)
+				if ok {
+					groupRatio[g] = ratio
 				}
 			}
 		}
