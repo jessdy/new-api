@@ -32,6 +32,24 @@ func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
 	return server
 }
 
+func TestUserCacheRejectsSchemaWithoutAgentAffiliation(t *testing.T) {
+	server := useUserCacheMiniRedis(t)
+	const userID = 4199
+	server.HSet(getUserCacheKey(userID),
+		"Id", "4199",
+		"Group", "default",
+		"Role", "1",
+		"Status", "1",
+		"Username", "legacy-agent-customer",
+		"AuthVersion", "1",
+		"CacheSchema", "3",
+	)
+
+	_, err := cacheGetUserBase(userID)
+
+	require.ErrorContains(t, err, "user cache schema is stale")
+}
+
 func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 	truncateTables(t)
 	server := useUserCacheMiniRedis(t)
