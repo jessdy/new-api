@@ -35,19 +35,40 @@ func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
 func TestUserCacheRejectsSchemaWithoutAgentAffiliation(t *testing.T) {
 	server := useUserCacheMiniRedis(t)
 	const userID = 4199
-	server.HSet(getUserCacheKey(userID),
-		"Id", "4199",
-		"Group", "default",
-		"Role", "1",
-		"Status", "1",
-		"Username", "legacy-agent-customer",
-		"AuthVersion", "1",
-		"CacheSchema", "3",
-	)
+	for _, schema := range []string{"3", "4"} {
+		server.HSet(getUserCacheKey(userID),
+			"Id", "4199",
+			"Group", "default",
+			"Role", "1",
+			"Status", "1",
+			"Username", "legacy-agent-customer",
+			"AuthVersion", "1",
+			"CacheSchema", schema,
+		)
 
-	_, err := cacheGetUserBase(userID)
+		_, err := cacheGetUserBase(userID)
 
-	require.ErrorContains(t, err, "user cache schema is stale")
+		require.ErrorContains(t, err, "user cache schema is stale")
+	}
+}
+
+func TestUserCachePersistsAgentAffiliation(t *testing.T) {
+	useUserCacheMiniRedis(t)
+	const userID = 4200
+	require.NoError(t, writeUserCache(&UserBase{
+		Id:          userID,
+		Group:       "default",
+		Username:    "agent-customer",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AgentId:     17,
+		AuthVersion: 1,
+	}, true))
+
+	cached, err := cacheGetUserBase(userID)
+	require.NoError(t, err)
+	assert.Equal(t, 17, cached.AgentId)
+	assert.Equal(t, userCacheSchemaVersion, cached.CacheSchema)
 }
 
 func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
