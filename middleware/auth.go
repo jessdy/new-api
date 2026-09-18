@@ -465,7 +465,11 @@ func TokenAuth() func(c *gin.Context) {
 
 		userCache.WriteContext(c)
 
-		agentId := userCache.AgentId
+		agentId, err := service.ResolveRequestAgentID(userCache.Id, userCache.Role, userCache.AgentId)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "agent not found", types.ErrorCodeAccessDenied)
+			return
+		}
 		if agentId > 0 {
 			if apiErr := service.EnsureAgentRequestAllowed(c, agentId); apiErr != nil {
 				abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error())

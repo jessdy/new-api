@@ -5,8 +5,10 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -94,4 +96,27 @@ func GetCurrentAgent(c *gin.Context) (*model.Agent, bool) {
 		return nil, false
 	}
 	return agent, true
+}
+
+// ResolveAgentRequest applies an agent's channel pool, credit gate, and pricing
+// context to dashboard-authenticated relay requests, including the playground.
+func ResolveAgentRequest() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		agentId, err := service.ResolveRequestAgentID(
+			c.GetInt("id"),
+			c.GetInt("role"),
+			common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
+		)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "agent not found")
+			return
+		}
+		if agentId > 0 {
+			if apiErr := service.EnsureAgentRequestAllowed(c, agentId); apiErr != nil {
+				abortWithOpenAiMessage(c, apiErr.StatusCode, apiErr.Error())
+				return
+			}
+		}
+		c.Next()
+	}
 }

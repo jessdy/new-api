@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -31,6 +32,12 @@ func GetUserGroups(c *gin.Context) {
 		userGroup, _ := model.GetUserGroup(userId, false)
 		user = &model.User{Group: userGroup}
 	}
+	agentId, err := service.ResolveRequestAgentID(user.Id, user.Role, user.AgentId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	user.AgentId = agentId
 	userUsableGroups := service.GetUserUsableGroupsForUser(user)
 	if user.AgentId > 0 {
 		for groupName, desc := range userUsableGroups {

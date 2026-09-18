@@ -15,6 +15,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ResolveRequestAgentID returns the agent whose channel pool and pricing apply
+// to a request. Downstream users carry AgentId directly; an agent owner is
+// linked through agents.user_id instead.
+func ResolveRequestAgentID(userId, role, assignedAgentId int) (int, error) {
+	if assignedAgentId > 0 {
+		return assignedAgentId, nil
+	}
+	if role != common.RoleAgentUser {
+		return 0, nil
+	}
+	agent, err := model.GetAgentByUserId(userId)
+	if err != nil {
+		return 0, err
+	}
+	return agent.Id, nil
+}
+
 func AppendAgentChannelFilter(c *gin.Context, agentId int) error {
 	if c == nil || agentId <= 0 {
 		return nil

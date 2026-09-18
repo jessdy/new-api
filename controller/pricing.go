@@ -44,6 +44,7 @@ func GetPricing(c *gin.Context) {
 	groupRatio := map[string]float64{}
 	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
 	var user *model.UserBase
+	requestAgentId := 0
 	if exists {
 		cached, err := model.GetUserCache(userId.(int))
 		if err != nil {
@@ -51,12 +52,18 @@ func GetPricing(c *gin.Context) {
 			return
 		}
 		user = cached
-		if cached.AgentId > 0 {
-			view, viewErr := model.GetAgentGroupPricingView(cached.AgentId)
+		agentId, resolveErr := service.ResolveRequestAgentID(cached.Id, cached.Role, cached.AgentId)
+		if resolveErr != nil {
+			common.ApiError(c, resolveErr)
+			return
+		}
+		requestAgentId = agentId
+		if agentId > 0 {
+			view, viewErr := model.GetAgentGroupPricingView(agentId)
 			if viewErr == nil {
 				groupRatio = maps.Clone(view.GroupRatio)
 				for g := range groupRatio {
-					if ratio, ok := service.GetAgentGroupGroupRatio(cached.AgentId, cached.Group, g); ok {
+					if ratio, ok := service.GetAgentGroupGroupRatio(agentId, cached.Group, g); ok {
 						groupRatio[g] = ratio
 					}
 				}
@@ -72,7 +79,7 @@ func GetPricing(c *gin.Context) {
 	}
 
 	if user != nil {
-		usableGroup = service.GetUserUsableGroupsForUser(&model.User{AgentId: user.AgentId, Group: user.Group})
+		usableGroup = service.GetUserUsableGroupsForUser(&model.User{AgentId: requestAgentId, Group: user.Group})
 	} else {
 		usableGroup = service.GetUserUsableGroups("")
 	}
@@ -111,7 +118,7 @@ func GetPricing(c *gin.Context) {
 
 	autoGroups := []string{}
 	if user != nil {
-		autoGroups = service.GetUserAutoGroupForUser(&model.User{AgentId: user.AgentId, Group: user.Group})
+		autoGroups = service.GetUserAutoGroupForUser(&model.User{AgentId: requestAgentId, Group: user.Group})
 	}
 
 	c.JSON(200, gin.H{

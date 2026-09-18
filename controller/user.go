@@ -631,7 +631,12 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	userModel := &model.User{AgentId: user.AgentId, Group: user.Group}
+	agentId, err := service.ResolveRequestAgentID(user.Id, user.Role, user.AgentId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	userModel := &model.User{AgentId: agentId, Group: user.Group}
 	groups := service.GetUserUsableGroupsForUser(userModel)
 	group := c.Query("group")
 	var groupsToQuery []string
@@ -650,26 +655,18 @@ func GetUserModels(c *gin.Context) {
 		}
 	}
 	models := service.GetGroupsEnabledModels(groupsToQuery)
-	if user.AgentId > 0 {
-		if limited, err := model.AgentUserHasModelLimit(user.Id); err == nil && limited {
-			allowed, err := model.ListEnabledAgentUserModels(user.Id)
-			if err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			allowSet := make(map[string]struct{}, len(allowed))
-			for _, name := range allowed {
-				allowSet[name] = struct{}{}
-			}
-			filtered := make([]string, 0, len(models))
-			for _, name := range models {
-				if _, ok := allowSet[name]; ok {
-					filtered = append(filtered, name)
-				}
-			}
-			models = filtered
+	effective, err := model.ResolveEffectivePricingCatalog(user, models)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filtered := make([]string, 0, len(models))
+	for _, name := range models {
+		if effective[name].Allowed {
+			filtered = append(filtered, name)
 		}
 	}
+	models = filtered
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

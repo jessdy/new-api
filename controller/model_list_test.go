@@ -49,7 +49,17 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Channel{},
+		&model.Ability{},
+		&model.Model{},
+		&model.Vendor{},
+		&model.Agent{},
+		&model.AgentChannel{},
+		&model.AgentGroup{},
+		&model.AgentModelPrice{},
+	))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -213,6 +223,48 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+func TestGetUserModelsUsesConfiguredAgentPricingForAgentOwner(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	owner := &model.User{
+		Id: 1010, Username: "playground-agent-owner", Password: "password",
+		Role: common.RoleAgentUser, Group: "default", Status: common.UserStatusEnabled,
+		AffCode: "playground-agent-owner",
+	}
+	require.NoError(t, db.Create(owner).Error)
+	agent := &model.Agent{
+		UserId: owner.Id, Name: "playground-agent", InviteCode: "playgroundagent",
+		Status: model.AgentStatusEnabled,
+	}
+	require.NoError(t, model.CreateAgent(agent))
+	require.NoError(t, db.Create(&model.AgentGroup{
+		AgentId: agent.Id, Name: "default", Ratio: 1, TopupRatio: 1,
+		Selectable: true, Enabled: true, IsDefault: true,
+	}).Error)
+	channel := &model.Channel{
+		Id: 1011, Name: "playground-agent-channel", Key: "test-key",
+		Status: common.ChannelStatusEnabled, Group: "default",
+		Models: "zz-agent-priced,zz-agent-unpriced",
+	}
+	require.NoError(t, db.Create(channel).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-agent-priced", ChannelId: channel.Id, Enabled: true},
+		{Group: "default", Model: "zz-agent-unpriced", ChannelId: channel.Id, Enabled: true},
+	}).Error)
+	require.NoError(t, model.ReplaceAgentChannels(agent.Id, []int{channel.Id}))
+	require.NoError(t, model.UpsertAgentModelCost(agent.Id, "zz-agent-priced", model.PricingValues{
+		"ModelPrice": 0.25,
+	}))
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	context.Set("id", owner.Id)
+
+	GetUserModels(context)
+
+	require.Equal(t, []string{"zz-agent-priced"}, decodeUserModelsResponse(t, recorder))
 }
 
 func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {

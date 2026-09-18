@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,13 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuditLog{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.UserSession{},
+		&model.AuditLog{},
+		&model.Agent{},
+		&model.AgentChannel{},
+	))
 	model.DB = db
 	model.LOG_DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
@@ -85,6 +92,47 @@ func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
 	}
 	require.NoError(t, model.DB.Create(user).Error)
 	return user
+}
+
+func TestResolveAgentRequestUsesOwnedAgentForAgentAccount(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	owner := &model.User{
+		Username: "agent-request-owner", Password: "password-placeholder",
+		Role: common.RoleAgentUser, Status: common.UserStatusEnabled, Group: "default",
+		AuthVersion: 1, AffCode: "agent-request-owner",
+	}
+	require.NoError(t, model.DB.Create(owner).Error)
+	agent := &model.Agent{
+		UserId: owner.Id, Name: "request-agent", InviteCode: "requestagent",
+		Status: model.AgentStatusEnabled,
+	}
+	require.NoError(t, model.CreateAgent(agent))
+	require.NoError(t, model.ReplaceAgentChannels(agent.Id, []int{91}))
+
+	router := gin.New()
+	router.GET("/playground",
+		func(c *gin.Context) {
+			c.Set("id", owner.Id)
+			c.Set("role", owner.Role)
+			c.Next()
+		},
+		ResolveAgentRequest(),
+		func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"agent_id": common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
+			})
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/playground", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload struct {
+		AgentId int `json:"agent_id"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.Equal(t, agent.Id, payload.AgentId)
 }
 
 func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
