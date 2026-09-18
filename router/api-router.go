@@ -449,6 +449,7 @@ func SetApiRouter(router *gin.Engine) {
 			agentRoute.GET("/payment", middleware.RequirePermission(authz.AgentPaymentRead), controller.AgentGetPaymentConfig)
 			agentRoute.PUT("/payment", middleware.RequirePermission(authz.AgentPaymentWrite), controller.AgentUpdatePaymentConfig)
 			agentRoute.GET("/settlement", middleware.RequirePermission(authz.AgentSettlementRead), controller.AgentListSettlementBills)
+			agentRoute.GET("/settlement/usage", middleware.RequirePermission(authz.AgentSettlementRead), controller.AgentGetSettlementUsage)
 		}
 
 		adminAgentsRoute := apiRouter.Group("/agents")

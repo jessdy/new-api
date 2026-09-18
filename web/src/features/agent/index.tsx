@@ -34,12 +34,12 @@ import { useAuthStore } from '@/stores/auth-store'
 import {
   getAgentSelf,
   listAgentChannels,
-  listAgentSettlement,
   replaceAgentChannels,
 } from './api'
 import { AgentPaymentPanel } from './components/agent-payment-panel'
 import { AgentPricingPanel } from './components/agent-pricing-panel'
 import { AgentModelsPanel } from './components/agent-models-panel'
+import { AgentSettlementPanel } from './components/agent-settlement-panel'
 import { AgentUsersPanel } from './components/agent-users-panel'
 import {
   AGENT_DEFAULT_SECTION,
@@ -218,24 +218,3 @@ function AgentChannelsPanel(props: {
   )
 }
 
-function AgentSettlementPanel(props: { agentId?: number }) {
-  const { t } = useTranslation()
-  const settlementQuery = useQuery({
-    queryKey: ['agent', 'settlement', props.agentId],
-    queryFn: () => listAgentSettlement(props.agentId),
-  })
-  return (
-    <div className='space-y-3'>
-      <div className='text-sm'>
-        {t('Settlement debt')}: {settlementQuery.data?.settlement_debt ?? 0} /{' '}
-        {t('Credit limit')}: {settlementQuery.data?.credit_limit ?? 0}
-      </div>
-      {(settlementQuery.data?.items ?? []).map((bill) => (
-        <div key={String(bill.id)} className='rounded-md border p-3 text-sm'>
-          #{String(bill.id)} · {String(bill.status)} ·{' '}
-          {String(bill.platform_quota)}
-        </div>
-      ))}
-    </div>
-  )
-}

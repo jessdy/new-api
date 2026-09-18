@@ -1,9 +1,11 @@
 package model
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -645,6 +647,130 @@ func GetAgentModelBillingLogs(userIDs []int, startTimestamp int64, endTimestamp 
 		logs[i].UpstreamRequestId = ""
 	}
 	return logs, total, nil
+}
+
+type AgentSettlementUsageUser struct {
+	UserId           int    `json:"user_id"`
+	Username         string `json:"username"`
+	Count            int    `json:"count"`
+	Quota            int64  `json:"quota"`
+	PlatformQuota    int64  `json:"platform_quota"`
+	TokenUsed        int64  `json:"token_used"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+}
+
+type AgentSettlementUsage struct {
+	Users            []AgentSettlementUsageUser `json:"users"`
+	Count            int64                      `json:"count"`
+	Quota            int64                      `json:"quota"`
+	PlatformQuota    int64                      `json:"platform_quota"`
+	TokenUsed        int64                      `json:"token_used"`
+	PromptTokens     int64                      `json:"prompt_tokens"`
+	CompletionTokens int64                      `json:"completion_tokens"`
+}
+
+func GetAgentSettlementUsage(agentId int, startTimestamp int64, endTimestamp int64) (AgentSettlementUsage, error) {
+	usage := AgentSettlementUsage{Users: []AgentSettlementUsageUser{}}
+	if agentId <= 0 {
+		return usage, nil
+	}
+	userIDs, err := ListUserIDsByAgentID(agentId)
+	if err != nil {
+		return usage, err
+	}
+	channelIDs, err := ListAgentChannelIds(agentId)
+	if err != nil {
+		return usage, err
+	}
+	if len(userIDs) == 0 || len(channelIDs) == 0 {
+		return usage, nil
+	}
+
+	tx := LOG_DB.Model(&Log{}).
+		Select("user_id, username, quota, prompt_tokens, completion_tokens, other").
+		Where("user_id IN ? AND type = ? AND channel_id IN ?", userIDs, LogTypeConsume, channelIDs)
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+
+	var rows []struct {
+		UserId           int
+		Username         string
+		Quota            int
+		PromptTokens     int
+		CompletionTokens int
+		Other            string
+	}
+	if err := tx.Find(&rows).Error; err != nil {
+		return usage, err
+	}
+
+	byUser := make(map[int]*AgentSettlementUsageUser, len(rows))
+	for _, row := range rows {
+		item := byUser[row.UserId]
+		if item == nil {
+			item = &AgentSettlementUsageUser{UserId: row.UserId, Username: row.Username}
+			byUser[row.UserId] = item
+		}
+		if item.Username == "" && row.Username != "" {
+			item.Username = row.Username
+		}
+		item.Count++
+		item.Quota += int64(row.Quota)
+		item.PlatformQuota += platformQuotaFromConsumeLog(row.Other)
+		item.PromptTokens += int64(row.PromptTokens)
+		item.CompletionTokens += int64(row.CompletionTokens)
+		item.TokenUsed += int64(row.PromptTokens) + int64(row.CompletionTokens)
+	}
+
+	users := make([]AgentSettlementUsageUser, 0, len(byUser))
+	for _, item := range byUser {
+		users = append(users, *item)
+		usage.Count += int64(item.Count)
+		usage.Quota += item.Quota
+		usage.PlatformQuota += item.PlatformQuota
+		usage.TokenUsed += item.TokenUsed
+		usage.PromptTokens += item.PromptTokens
+		usage.CompletionTokens += item.CompletionTokens
+	}
+	slices.SortFunc(users, func(a, b AgentSettlementUsageUser) int {
+		if c := cmp.Compare(b.Quota, a.Quota); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.UserId, b.UserId)
+	})
+	usage.Users = users
+	return usage, nil
+}
+
+func platformQuotaFromConsumeLog(other string) int64 {
+	if strings.TrimSpace(other) == "" {
+		return 0
+	}
+	values, err := common.StrToMap(other)
+	if err != nil || values == nil {
+		return 0
+	}
+	admin, _ := values["admin_info"].(map[string]any)
+	if admin == nil {
+		return 0
+	}
+	switch value := admin["platform_quota"].(type) {
+	case float64:
+		return int64(value)
+	case float32:
+		return int64(value)
+	case int:
+		return int64(value)
+	case int64:
+		return value
+	default:
+		return 0
+	}
 }
 
 type Stat struct {

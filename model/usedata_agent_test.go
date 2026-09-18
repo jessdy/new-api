@@ -217,3 +217,56 @@ func TestGetModelBillingLogsForAgentUsers(t *testing.T) {
 	assert.Contains(t, other, "model_ratio")
 	assert.NotContains(t, other, "admin_info")
 }
+
+func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
+	db := newAgentTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	previousLogDB := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = previousLogDB })
+
+	agent := &Agent{
+		UserId:     501,
+		Name:       "settle-agent",
+		InviteCode: "settleagent",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{11, 12}))
+	require.NoError(t, DB.Create(&User{
+		Id: 601, Username: "settle-user", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "settleuser", AgentId: agent.Id,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 602, Username: "other-user", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "otheruser",
+	}).Error)
+
+	userOther := common.MapToJsonStr(map[string]any{
+		"admin_info": map[string]any{"platform_quota": 4},
+	})
+	costOther := common.MapToJsonStr(map[string]any{
+		"admin_info": map[string]any{"platform_quota": 9},
+	})
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 1000, Quota: 20, PromptTokens: 8, CompletionTokens: 2, Other: userOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 12, CreatedAt: 1100, Quota: 10, PromptTokens: 3, CompletionTokens: 1, Other: costOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 99, CreatedAt: 1000, Quota: 50, PromptTokens: 9, CompletionTokens: 9, Other: costOther},
+		{UserId: 602, Username: "other-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 1000, Quota: 80, PromptTokens: 7, CompletionTokens: 7, Other: costOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 5000, Quota: 15, PromptTokens: 1, CompletionTokens: 1, Other: userOther},
+	}).Error)
+
+	usage, err := GetAgentSettlementUsage(agent.Id, 900, 2000)
+	require.NoError(t, err)
+	require.Len(t, usage.Users, 1)
+	assert.Equal(t, 601, usage.Users[0].UserId)
+	assert.Equal(t, "settle-user", usage.Users[0].Username)
+	assert.Equal(t, 2, usage.Users[0].Count)
+	assert.Equal(t, int64(30), usage.Users[0].Quota)
+	assert.Equal(t, int64(13), usage.Users[0].PlatformQuota)
+	assert.Equal(t, int64(14), usage.Users[0].TokenUsed)
+	assert.Equal(t, int64(2), usage.Count)
+	assert.Equal(t, int64(30), usage.Quota)
+	assert.Equal(t, int64(13), usage.PlatformQuota)
+	assert.Equal(t, int64(14), usage.TokenUsed)
+}

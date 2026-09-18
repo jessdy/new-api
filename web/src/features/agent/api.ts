@@ -327,6 +327,27 @@ export async function updateAgentPaymentConfig(
   return res.data.data
 }
 
+export type AgentSettlementUsageUser = {
+  user_id: number
+  username: string
+  count: number
+  quota: number
+  platform_quota: number
+  token_used: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
+export type AgentSettlementUsage = {
+  users: AgentSettlementUsageUser[]
+  count: number
+  quota: number
+  platform_quota: number
+  token_used: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
 export async function listAgentSettlement(agentId?: number) {
   const res = await api.get('/api/agent/settlement', {
     params: agentParams(agentId),
@@ -338,6 +359,22 @@ export async function listAgentSettlement(agentId?: number) {
     settlement_debt: number
     credit_limit: number
   }
+}
+
+export async function getAgentSettlementUsage(
+  startTimestamp: number,
+  endTimestamp: number,
+  agentId?: number
+): Promise<AgentSettlementUsage> {
+  const res = await api.get('/api/agent/settlement/usage', {
+    params: {
+      ...agentParams(agentId),
+      start_timestamp: startTimestamp,
+      end_timestamp: endTimestamp,
+    },
+  })
+  requireServerSuccess(res.data)
+  return res.data.data
 }
 
 export async function adminListAgents(
