@@ -37,14 +37,24 @@ import {
   usageLogSchema,
   type UsageLog,
 } from '@/features/usage-logs/data/schema'
+import { parseLogOther } from '@/features/usage-logs/lib/format'
 import type { GetLogsResponse } from '@/features/usage-logs/types'
-import { formatLogQuota, formatNumber, formatTimestamp } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatQuota,
+  formatTimestamp,
+} from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 const PAGE_SIZE = 20
 
 interface ModelBillingDetailsDialogProps {
   modelName: string
+  promptTokens: number
+  completionTokens: number
+  cacheTokens: number
+  quota: number
   startTimestamp: number
   endTimestamp: number
   scope: 'admin' | 'agent' | 'self'
@@ -136,6 +146,13 @@ export function ModelBillingDetailsDialog(
       cell: (log) => formatNumber(log.completion_tokens),
     },
     {
+      id: 'cache',
+      header: t('Cache Tokens'),
+      className: staticDataTableClassNames.compactHeaderCellRight,
+      cellClassName: staticDataTableClassNames.compactNumericCell,
+      cell: (log) => formatNumber(parseLogOther(log.other)?.cache_tokens || 0),
+    },
+    {
       id: 'billing',
       header: t('Billing'),
       className: staticDataTableClassNames.compactHeaderCellRight,
@@ -163,6 +180,20 @@ export function ModelBillingDetailsDialog(
         contentClassName='sm:max-w-5xl'
         contentHeight='min(72dvh, 720px)'
       >
+        <div className='text-muted-foreground mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4'>
+          <div>
+            {t('Input Tokens')}: {formatNumber(props.promptTokens)}
+          </div>
+          <div>
+            {t('Output Tokens')}: {formatNumber(props.completionTokens)}
+          </div>
+          <div>
+            {t('Cache Tokens')}: {formatNumber(props.cacheTokens)}
+          </div>
+          <div>
+            {t('Billing')}: {formatQuota(props.quota)}
+          </div>
+        </div>
         <StaticDataTable
           className={staticDataTableClassNames.embeddedContainer}
           columns={columns}

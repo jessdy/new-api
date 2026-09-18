@@ -137,6 +137,23 @@ func TestGetQuotaDataByAgentIdAggregatesRegisteredUsersOnly(t *testing.T) {
 	assert.Equal(t, 5, byModel["gpt-4"].Count)
 	assert.Equal(t, 100, byModel["gpt-4"].TokenUsed)
 	assert.Equal(t, 80, byModel["claude-3"].Quota)
+
+	require.NoError(t, DB.Create(&User{
+		Id: 304, Username: "invitee", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "invitee",
+		InviterId: 301, AgentId: 0,
+	}).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID: 304, Username: "invitee", ModelName: "glm-5.3", CreatedAt: 3600,
+		Count: 4, Quota: 40, TokenUsed: 16, PromptTokens: 10, CompletionTokens: 6, CacheTokens: 3,
+	}).Error)
+	hourly, err := GetQuotaDataByAgentId(agent.Id, 3700, 8000)
+	require.NoError(t, err)
+	require.Len(t, hourly, 1)
+	assert.Equal(t, "glm-5.3", hourly[0].ModelName)
+	assert.Equal(t, 10, hourly[0].PromptTokens)
+	assert.Equal(t, 6, hourly[0].CompletionTokens)
+	assert.Equal(t, 3, hourly[0].CacheTokens)
 }
 
 func TestGetPlatformUsageSummaryAggregatesAllNonDeletedUsers(t *testing.T) {
@@ -216,6 +233,15 @@ func TestGetModelBillingLogsForAgentUsers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, other, "model_ratio")
 	assert.NotContains(t, other, "admin_info")
+
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 201, Username: "agent-user", Type: LogTypeConsume, ModelName: "glm-5.3", CreatedAt: 3650, Quota: 7,
+	}).Error)
+	hourly, hourlyTotal, err := GetAgentModelBillingLogs(userIDs, 3700, 4000, "glm-5.3", 0, 20)
+	require.NoError(t, err)
+	require.Len(t, hourly, 1)
+	assert.Equal(t, int64(1), hourlyTotal)
+	assert.Equal(t, int64(3650), hourly[0].CreatedAt)
 }
 
 func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {

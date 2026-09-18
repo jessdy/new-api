@@ -31,7 +31,11 @@ import type {
   DashboardFilters,
   ModelAnalyticsChartTab,
 } from '@/features/dashboard/types'
-import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
+import {
+  computeTimeRange,
+  getRollingDateRange,
+  type TimeGranularity,
+} from '@/lib/time'
 
 function isTimeGranularity(value: unknown): value is TimeGranularity {
   return value === 'hour' || value === 'day' || value === 'week'
@@ -150,6 +154,31 @@ export function buildDefaultDashboardFilters(
     end_timestamp: end,
     time_granularity: preferences.defaultTimeGranularity,
   }
+}
+
+export function alignToQuotaHour(range: {
+  start_timestamp: number
+  end_timestamp: number
+}): { start_timestamp: number; end_timestamp: number } {
+  if (range.start_timestamp <= 0) return range
+  return {
+    start_timestamp: range.start_timestamp - (range.start_timestamp % 3600),
+    end_timestamp: range.end_timestamp,
+  }
+}
+
+export function getDashboardQueryTimeRange(filters?: {
+  time_granularity?: TimeGranularity
+  start_timestamp?: Date
+  end_timestamp?: Date
+}): { start_timestamp: number; end_timestamp: number } {
+  return alignToQuotaHour(
+    computeTimeRange(
+      getDefaultDays(filters?.time_granularity),
+      filters?.start_timestamp,
+      filters?.end_timestamp
+    )
+  )
 }
 
 export function buildQueryParams(

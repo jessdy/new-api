@@ -26,7 +26,7 @@ import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboar
 import {
   buildQueryParams,
   calculateDashboardStats,
-  getDefaultDays,
+  getDashboardQueryTimeRange,
 } from '@/features/dashboard/lib'
 import type {
   QuotaDataItem,
@@ -34,7 +34,6 @@ import type {
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
-import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -87,11 +86,7 @@ export function LogStatCards(props: LogStatCardsProps) {
     setError(false)
     onDataUpdate?.([], true)
 
-    const timeRange = computeTimeRange(
-      getDefaultDays(filters?.time_granularity),
-      filters?.start_timestamp,
-      filters?.end_timestamp
-    )
+    const timeRange = getDashboardQueryTimeRange(filters)
     const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
     setTimeRangeMinutes(timeDiff)
 

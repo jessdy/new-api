@@ -619,6 +619,7 @@ func GetAgentModelBillingLogs(userIDs []int, startTimestamp int64, endTimestamp 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
 	}
+	startTimestamp = alignHourlyStart(startTimestamp)
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
 	}

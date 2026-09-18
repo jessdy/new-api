@@ -133,6 +133,7 @@ describe('model usage table', () => {
               model_ratio: 1,
               completion_ratio: 2,
               group_ratio: 1,
+              cache_tokens: 15,
             }),
             request_id: 'req-7',
             upstream_request_id: '',
@@ -162,8 +163,8 @@ describe('model usage table', () => {
             },
           ]}
           filters={{
-            start_timestamp: new Date(900 * 1000),
-            end_timestamp: new Date(1100 * 1000),
+            start_timestamp: new Date(3700 * 1000),
+            end_timestamp: new Date(3800 * 1000),
           }}
         />
       </QueryClientProvider>
@@ -174,12 +175,15 @@ describe('model usage table', () => {
     )
 
     expect(await screen.findByText('Billing Details · gpt-a')).toBeTruthy()
+    expect(screen.getByText('Cache Tokens: 0')).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: 'Cache Tokens' })).toBeTruthy()
+    expect(screen.getByText('15')).toBeTruthy()
     expect(getUserLogs).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 2,
         model_name: 'gpt-a',
-        start_timestamp: 900,
-        end_timestamp: 1100,
+        start_timestamp: 3600,
+        end_timestamp: 3800,
       })
     )
 

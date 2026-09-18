@@ -27,7 +27,7 @@ import {
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { IconBadge } from '@/components/ui/icon-badge'
-import { getDefaultDays } from '@/features/dashboard/lib/filters'
+import { getDashboardQueryTimeRange } from '@/features/dashboard/lib/filters'
 import {
   aggregateModelUsage,
   type ModelUsageSummary,
@@ -39,7 +39,6 @@ import type {
 import { formatNumber, formatQuota } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { ROLE } from '@/lib/roles'
-import { computeTimeRange } from '@/lib/time'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ModelBillingDetailsDialog } from './model-billing-details-dialog'
@@ -54,12 +53,8 @@ interface ModelUsageTableProps {
 export function ModelUsageTable(props: ModelUsageTableProps) {
   const { t } = useTranslation()
   const userRole = useAuthStore((state) => state.auth.user?.role)
-  const [billingModel, setBillingModel] = useState<string | null>(null)
-  const timeRange = computeTimeRange(
-    getDefaultDays(props.filters?.time_granularity),
-    props.filters?.start_timestamp,
-    props.filters?.end_timestamp
-  )
+  const [billingRow, setBillingRow] = useState<ModelUsageSummary | null>(null)
+  const timeRange = getDashboardQueryTimeRange(props.filters)
   let billingScope: 'admin' | 'agent' | 'self' = 'self'
   if (userRole != null && userRole >= ROLE.ADMIN) {
     billingScope = 'admin'
@@ -123,7 +118,7 @@ export function ModelUsageTable(props: ModelUsageTableProps) {
             size='sm'
             className='h-auto p-0 font-semibold tabular-nums underline decoration-dotted underline-offset-4'
             aria-label={`${t('Billing Details')}: ${row.modelName}`}
-            onClick={() => setBillingModel(row.modelName)}
+            onClick={() => setBillingRow(row)}
           >
             {formatQuota(row.quota)}
           </Button>
@@ -150,10 +145,14 @@ export function ModelUsageTable(props: ModelUsageTableProps) {
         emptyContent={t(props.loading ? 'Loading' : 'No data')}
         headerRowClassName={staticDataTableClassNames.mutedHeaderRow}
       />
-      {billingModel ? (
+      {billingRow ? (
         <ModelBillingDetailsDialog
-          key={billingModel}
-          modelName={billingModel}
+          key={billingRow.modelName}
+          modelName={billingRow.modelName}
+          promptTokens={billingRow.promptTokens}
+          completionTokens={billingRow.completionTokens}
+          cacheTokens={billingRow.cacheTokens}
+          quota={billingRow.quota}
           startTimestamp={timeRange.start_timestamp}
           endTimestamp={timeRange.end_timestamp}
           scope={billingScope}
@@ -163,7 +162,7 @@ export function ModelUsageTable(props: ModelUsageTableProps) {
           }
           open
           onOpenChange={(open) => {
-            if (!open) setBillingModel(null)
+            if (!open) setBillingRow(null)
           }}
         />
       ) : null}

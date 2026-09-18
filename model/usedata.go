@@ -184,8 +184,23 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 	return quotaDatas, err
 }
 
+// alignHourlyStart floors a unix timestamp to the hour so quota_data hour
+// buckets stay comparable with consume-log queries for the same range.
+func alignHourlyStart(startTimestamp int64) int64 {
+	if startTimestamp <= 0 {
+		return startTimestamp
+	}
+	return startTimestamp - startTimestamp%3600
+}
+
 // GetQuotaDataByAgentId aggregates usage from users registered under an agent.
 func GetQuotaDataByAgentId(agentId int, startTime int64, endTime int64) ([]*QuotaData, error) {
+	if agent, err := GetAgentById(agentId); err == nil {
+		if err := AttachInvitedUsersToAgent(agent); err != nil {
+			return nil, err
+		}
+	}
+	startTime = alignHourlyStart(startTime)
 	var quotaDatas []*QuotaData
 	err := DB.Table("quota_data").
 		Select("quota_data.model_name, quota_data.created_at, sum(quota_data.count) as count, sum(quota_data.quota) as quota, sum(quota_data.token_used) as token_used, sum(quota_data.prompt_tokens) as prompt_tokens, sum(quota_data.completion_tokens) as completion_tokens, sum(quota_data.cache_tokens) as cache_tokens").

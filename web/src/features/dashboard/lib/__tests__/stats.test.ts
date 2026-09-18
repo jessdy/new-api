@@ -18,7 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
+import { alignToQuotaHour } from '../filters'
 import { aggregateModelUsage, calculateDashboardStats } from '../stats'
+
+describe('dashboard query time alignment', () => {
+  test('floors the start timestamp to the quota_data hour bucket', () => {
+    expect(
+      alignToQuotaHour({ start_timestamp: 3700, end_timestamp: 8000 })
+    ).toEqual({ start_timestamp: 3600, end_timestamp: 8000 })
+  })
+
+  test('keeps a non-positive start timestamp unchanged', () => {
+    expect(
+      alignToQuotaHour({ start_timestamp: 0, end_timestamp: 8000 })
+    ).toEqual({ start_timestamp: 0, end_timestamp: 8000 })
+  })
+})
 
 describe('dashboard token statistics', () => {
   test('aggregates input, output, and cached tokens without removing cache from input', () => {
