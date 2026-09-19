@@ -33,14 +33,15 @@ type FundingSource interface {
 var ErrInsufficientWalletQuota = errors.New("wallet quota insufficient")
 
 type WalletFunding struct {
-	userId   int
-	consumed int // 实际预扣的用户额度
+	userId    int
+	consumed  int // 实际预扣的用户额度
+	unlimited bool
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
 
 func (w *WalletFunding) PreConsume(amount int) error {
-	if amount <= 0 {
+	if w.unlimited || amount <= 0 {
 		return nil
 	}
 	reserved, err := model.TryReserveUserQuota(w.userId, amount)
@@ -55,7 +56,7 @@ func (w *WalletFunding) PreConsume(amount int) error {
 }
 
 func (w *WalletFunding) Settle(delta int) error {
-	if delta == 0 {
+	if w.unlimited || delta == 0 {
 		return nil
 	}
 	if delta > 0 {
@@ -65,7 +66,7 @@ func (w *WalletFunding) Settle(delta int) error {
 }
 
 func (w *WalletFunding) Refund() error {
-	if w.consumed <= 0 {
+	if w.unlimited || w.consumed <= 0 {
 		return nil
 	}
 	// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。

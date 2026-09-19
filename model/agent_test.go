@@ -294,6 +294,82 @@ func TestAgentInviteBinding(t *testing.T) {
 	assert.ElementsMatch(t, []int{invited.Id, viaAff.Id}, ids)
 }
 
+func TestListUsersByAgentIdOnlyReturnsCurrentAgentUsers(t *testing.T) {
+	newAgentTestDB(t)
+	owner := User{
+		Username: "channel-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "chow",
+	}
+	require.NoError(t, DB.Create(&owner).Error)
+	agent := &Agent{
+		UserId:     owner.Id,
+		Name:       "channel-a",
+		InviteCode: "chana",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+
+	otherOwner := User{
+		Username: "other-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "otow",
+	}
+	require.NoError(t, DB.Create(&otherOwner).Error)
+	otherAgent := &Agent{
+		UserId:     otherOwner.Id,
+		Name:       "channel-b",
+		InviteCode: "chanb",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(otherAgent))
+
+	member := User{
+		Username: "channel-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "chmb",
+		AgentId:  agent.Id,
+	}
+	require.NoError(t, DB.Create(&member).Error)
+	foreign := User{
+		Username: "foreign-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "frgn",
+		AgentId:  otherAgent.Id,
+	}
+	require.NoError(t, DB.Create(&foreign).Error)
+	unbound := User{
+		Username: "platform-user",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "plat",
+	}
+	require.NoError(t, DB.Create(&unbound).Error)
+	require.NoError(t, DB.Model(&owner).Updates(map[string]any{
+		"agent_id": agent.Id,
+	}).Error)
+
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, users, 1)
+	assert.Equal(t, member.Id, users[0].Id)
+}
+
 func TestListUsersByAgentIdPostgres(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
 	if dsn == "" {

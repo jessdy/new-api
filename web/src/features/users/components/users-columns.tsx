@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/tooltip'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
+import { hasUnlimitedWalletQuota } from '@/lib/roles'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import {
@@ -182,7 +183,13 @@ export function useUsersColumns(): ColumnDef<User>[] {
       header: `${t('Available Balance')} (${quotaUnit})`,
       cell: ({ row }) => {
         const user = row.original
-        return <UserQuotaCell remaining={user.quota} used={user.used_quota} />
+        return (
+          <UserQuotaCell
+            remaining={user.quota}
+            used={user.used_quota}
+            unlimited={hasUnlimitedWalletQuota(user.role)}
+          />
+        )
       },
       size: 180,
       minSize: 160,

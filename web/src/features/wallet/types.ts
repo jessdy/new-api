@@ -228,8 +228,12 @@ export interface UserWalletData {
   id: number
   /** Username */
   username: string
+  /** User role */
+  role?: number
   /** Current quota balance */
   quota: number
+  /** Role-based unlimited wallet */
+  unlimited_quota?: boolean
   /** Total used quota */
   used_quota: number
   /** Total request count */

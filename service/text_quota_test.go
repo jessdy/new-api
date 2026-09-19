@@ -1504,3 +1504,63 @@ func TestSetAgentTextPlatformQuotaUsesIndependentCostPricing(t *testing.T) {
 		assert.Equal(t, expected, relayInfo.PlatformQuota)
 	})
 }
+
+func TestPrivilegedRolesSkipWalletQuota(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	model.DB, model.LOG_DB = db, db
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+
+	for i, role := range []int{common.RoleAgentUser, common.RoleAdminUser, common.RoleRootUser} {
+		user := model.User{
+			Username: fmt.Sprintf("privileged-%d", i),
+			Quota:    0,
+			Role:     role,
+			Status:   common.UserStatusEnabled,
+			AffCode:  fmt.Sprintf("priv%d", i),
+		}
+		require.NoError(t, db.Create(&user).Error)
+		info := &relaycommon.RelayInfo{
+			UserId:      user.Id,
+			UserRole:    role,
+			UserSetting: dto.UserSetting{BillingPreference: "wallet_only"},
+		}
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		session, apiErr := NewBillingSession(ctx, info, 100)
+		require.Nil(t, apiErr)
+		require.NotNil(t, session)
+		held, err := model.GetUserQuota(user.Id, true)
+		require.NoError(t, err)
+		assert.Equal(t, 0, held)
+		require.NoError(t, session.Settle(80))
+		held, err = model.GetUserQuota(user.Id, true)
+		require.NoError(t, err)
+		assert.Equal(t, 0, held)
+	}
+
+	user := model.User{
+		Username: "common-empty",
+		Quota:    0,
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		AffCode:  "common0",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	info := &relaycommon.RelayInfo{
+		UserId:      user.Id,
+		UserRole:    common.RoleCommonUser,
+		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"},
+	}
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	session, apiErr := NewBillingSession(ctx, info, 100)
+	require.NotNil(t, apiErr)
+	assert.Nil(t, session)
+	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+}

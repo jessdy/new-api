@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
+import { hasUnlimitedWalletQuota } from '@/lib/roles'
 
 import type { UserWalletData } from '../types'
 
@@ -55,7 +56,11 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   }[] = [
     {
       label: t('Current Balance'),
-      value: formatQuota(props.user?.quota ?? 0),
+      value:
+        props.user?.unlimited_quota ||
+        hasUnlimitedWalletQuota(props.user?.role)
+          ? t('Unlimited')
+          : formatQuota(props.user?.quota ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
       tone: 'success',

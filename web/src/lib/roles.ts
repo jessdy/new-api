@@ -45,3 +45,7 @@ export function getRoleLabelKey(role?: number): string {
 export function getRoleLabel(role?: number): string {
   return t(getRoleLabelKey(role))
 }
+
+export function hasUnlimitedWalletQuota(role?: number): boolean {
+  return (role ?? 0) >= ROLE.AGENT
+}

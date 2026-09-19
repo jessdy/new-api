@@ -316,13 +316,12 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 		return nil, 0, err
 	}
 	var total int64
-	if err := DB.Model(&User{}).Where("agent_id = ?", agentId).Count(&total).Error; err != nil {
+	if err := agentChannelUsersQuery(agent).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var users []User
-	err = DB.Model(&User{}).
+	err = agentChannelUsersQuery(agent).
 		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "created_at").
-		Where("agent_id = ?", agentId).
 		Order("id desc").Offset(offset).Limit(limit).Find(&users).Error
 	if err != nil {
 		return nil, 0, err
@@ -368,6 +367,17 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 		})
 	}
 	return items, total, nil
+}
+
+func agentChannelUsersQuery(agent *Agent) *gorm.DB {
+	if agent == nil {
+		return DB.Model(&User{}).Where("1 = 0")
+	}
+	query := DB.Model(&User{}).Where("agent_id = ?", agent.Id)
+	if agent.UserId > 0 {
+		query = query.Where("id <> ?", agent.UserId)
+	}
+	return query.Where("role < ?", common.RoleAgentUser)
 }
 
 func ListUserIDsByAgentID(agentId int) ([]int, error) {

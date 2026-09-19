@@ -517,6 +517,7 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"group":             user.Group,
 		"quota":             user.Quota,
 		"used_quota":        user.UsedQuota,
+		"unlimited_quota":   common.HasUnlimitedWalletQuota(user.Role),
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
 		"aff_count":         user.AffCount,

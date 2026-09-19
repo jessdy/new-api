@@ -198,6 +198,12 @@ func IsValidateRole(role int) bool {
 	return role == RoleGuestUser || role == RoleCommonUser || role == RoleAgentUser || role == RoleAdminUser || role == RoleRootUser
 }
 
+// HasUnlimitedWalletQuota reports whether this role may use the API without a
+// wallet balance. Agent, admin, and root accounts are not billed from quota.
+func HasUnlimitedWalletQuota(role int) bool {
+	return role >= RoleAgentUser
+}
+
 var (
 	FileUploadPermission    = RoleGuestUser
 	FileDownloadPermission  = RoleGuestUser

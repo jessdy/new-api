@@ -27,6 +27,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 type UserQuotaCellProps = {
   remaining: number
   used: number
+  unlimited?: boolean
 }
 
 export function UserQuotaCell(props: UserQuotaCellProps) {
@@ -35,10 +36,13 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
 
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
-  const hasQuota = props.remaining !== 0 || props.used !== 0
-  const formattedRemaining = formatQuotaWithCurrency(props.remaining, {
-    showSymbol: false,
-  })
+  const hasQuota =
+    props.unlimited || props.remaining !== 0 || props.used !== 0
+  const formattedRemaining = props.unlimited
+    ? t('Unlimited')
+    : formatQuotaWithCurrency(props.remaining, {
+        showSymbol: false,
+      })
   const formattedUsed = formatQuotaWithCurrency(props.used, {
     showSymbol: false,
   })
@@ -60,8 +64,10 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
         <span className='grid min-w-0 grid-cols-1 gap-y-1 text-sm tabular-nums'>
           <span
             className={cn(
-              props.remaining < 0 && 'text-destructive',
-              props.remaining === 0 && 'text-muted-foreground'
+              !props.unlimited && props.remaining < 0 && 'text-destructive',
+              !props.unlimited &&
+                props.remaining === 0 &&
+                'text-muted-foreground'
             )}
           >
             {formattedRemaining}

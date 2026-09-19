@@ -65,7 +65,7 @@ await i18n.init({
   initAsync: false,
 })
 
-function QuotaTable(props: { remaining: number; used: number }) {
+function QuotaTable(props: { remaining: number; used: number; role?: number }) {
   const columns = useUsersColumns().filter((column) =>
     ['quota', 'used_quota'].includes(
       column.id ?? ('accessorKey' in column ? String(column.accessorKey) : '')
@@ -78,7 +78,7 @@ function QuotaTable(props: { remaining: number; used: number }) {
         id: 1,
         username: 'test',
         display_name: '',
-        role: 1,
+        role: props.role ?? 1,
         status: 1,
         quota: props.remaining,
         used_quota: props.used,
@@ -173,6 +173,20 @@ it('shows balance above secondary usage text and opens quota details on click', 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   )
   expect(trigger).toHaveFocus()
+})
+
+it.each([5, 10])('shows unlimited balance for privileged role %s', (role) => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QuotaTable remaining={0} used={0} role={role} />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('Unlimited')).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', {
+      name: 'Available Balance Unlimited; Used amount 0',
+    })
+  ).toBeInTheDocument()
 })
 
 it.each([0, 500000])(
