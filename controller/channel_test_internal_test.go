@@ -134,6 +134,24 @@ func TestMultiprotocolGatewayEndpointTypes(t *testing.T) {
 	assert.Equal(t, want, common.GetEndpointTypesByChannelType(constant.ChannelTypeSub2API, "gpt-5"))
 }
 
+func TestVideoChannelEndpointTypes(t *testing.T) {
+	want := []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+
+	assert.Equal(t, want, common.GetEndpointTypesByChannelType(constant.ChannelTypeSora, "sora-2"))
+	assert.Equal(
+		t,
+		want,
+		common.GetEndpointTypesByChannelType(
+			constant.ChannelTypeDoubaoVideo,
+			"doubao-seedance-2-0-260128",
+		),
+	)
+	info, ok := common.GetDefaultEndpointInfo(constant.EndpointTypeOpenAIVideo)
+	require.True(t, ok)
+	assert.Equal(t, "/v1/videos", info.Path)
+	assert.Equal(t, "POST", info.Method)
+}
+
 func TestCopyChannelRejectsInvalidLegacyProxySettings(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	settingBytes, err := common.Marshal(dto.ChannelSettings{

@@ -131,6 +131,19 @@ func TestPricingAdvancedCustomUsesConfiguredEndpointTypes(t *testing.T) {
 	}, byModel["gpt-4o"])
 }
 
+func TestPricingDoubaoVideoUsesOpenAIVideoEndpoint(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 105, constant.ChannelTypeDoubaoVideo, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 105, "doubao-seedance-2-0-260128")
+
+	byModel := pricingEndpointTypesByModel(t)
+
+	assert.Equal(t, []constant.EndpointType{
+		constant.EndpointTypeOpenAIVideo,
+	}, byModel["doubao-seedance-2-0-260128"])
+}
+
 func TestPricingModelMetadataEndpointsMergeWithAdvancedCustomInference(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

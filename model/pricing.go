@@ -183,13 +183,28 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 }
 
 func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
-	if ability.ChannelType != constant.ChannelTypeAdvancedCustom {
-		return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
+	if ability.ChannelType == constant.ChannelTypeAdvancedCustom {
+		if config := advancedCustomConfigs[ability.ChannelId]; config != nil {
+			return config.SupportedEndpointTypesForModel(ability.Model)
+		}
 	}
-	if config := advancedCustomConfigs[ability.ChannelId]; config != nil {
-		return config.SupportedEndpointTypesForModel(ability.Model)
+	if plugin, ok := jsplugin.DefaultRegistry.Generation().GetByModel(ability.Model); ok {
+		if endpoints := endpointTypesFromPluginProtocols(plugin); len(endpoints) > 0 {
+			return endpoints
+		}
 	}
 	return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
+}
+
+func endpointTypesFromPluginProtocols(plugin *jsplugin.LoadedPlugin) []constant.EndpointType {
+	var endpoints []constant.EndpointType
+	for _, claim := range plugin.Meta.Protocols {
+		if claim.Name == "openai_video" {
+			endpoints = append(endpoints, constant.EndpointTypeOpenAIVideo)
+			break
+		}
+	}
+	return endpoints
 }
 
 // loadPricingAdvancedCustomConfigs runs inside updatePricing while
