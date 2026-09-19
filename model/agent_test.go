@@ -370,6 +370,64 @@ func TestListUsersByAgentIdOnlyReturnsCurrentAgentUsers(t *testing.T) {
 	assert.Equal(t, member.Id, users[0].Id)
 }
 
+func TestListAgentsForAdminIncludesSales(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.AutoMigrate(&QuotaData{}))
+
+	owner := User{
+		Username: "sales-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "sow1",
+	}
+	require.NoError(t, DB.Create(&owner).Error)
+	agent := &Agent{
+		UserId:     owner.Id,
+		Name:       "sales-org",
+		InviteCode: "sale1",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	member := User{
+		Username:  "sales-member",
+		Password:  "placeholder",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		Group:     "default",
+		AffCode:   "smem",
+		AgentId:   agent.Id,
+		UsedQuota: 2500,
+	}
+	require.NoError(t, DB.Create(&member).Error)
+	require.NoError(t, DB.Create(&QuotaData{
+		UserID:    member.Id,
+		Username:  member.Username,
+		ModelName: "gpt-test",
+		CreatedAt: time.Now().Unix(),
+		Quota:     800,
+	}).Error)
+	bill := &AgentSettlementBill{
+		AgentId:       agent.Id,
+		PeriodStart:   1,
+		PeriodEnd:     2,
+		PlatformQuota: 100,
+		Status:        AgentSettlementBillStatusInvoiced,
+	}
+	require.NoError(t, CreateAgentSettlementBill(bill))
+
+	items, total, err := ListAgentsForAdmin(0, 20, "", 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	assert.Equal(t, owner.Username, items[0]["username"])
+	assert.Equal(t, int64(2500), items[0]["total_sales"])
+	assert.Equal(t, int64(800), items[0]["monthly_sales"])
+	assert.Equal(t, bill.Id, items[0]["unpaid_bill_id"])
+	assert.Equal(t, "sale1", items[0]["invite_code"])
+}
+
 func TestListUsersByAgentIdPostgres(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
 	if dsn == "" {

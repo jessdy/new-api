@@ -43,14 +43,10 @@ func AdminListAgents(c *gin.Context) {
 	}
 	status := strings.TrimSpace(c.Query("status"))
 	userId, _ := strconv.Atoi(c.Query("user_id"))
-	agents, total, err := model.ListAgents((page-1)*pageSize, pageSize, status, userId)
+	items, total, err := model.ListAgentsForAdmin((page-1)*pageSize, pageSize, status, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
-	}
-	items := make([]map[string]any, 0, len(agents))
-	for _, agent := range agents {
-		items = append(items, model.AgentPublicSummary(agent))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

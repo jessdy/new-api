@@ -26,11 +26,15 @@ function agentParams(agentId?: number) {
 export type AgentSummary = {
   id: number
   user_id: number
+  username?: string
   name: string
   invite_code: string
   status: string
   credit_limit: number
   settlement_debt: number
+  monthly_sales?: number
+  total_sales?: number
+  unpaid_bill_id?: number
   request_allowed?: boolean
   created_at?: number
   updated_at?: number

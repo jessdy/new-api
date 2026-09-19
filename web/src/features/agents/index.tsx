@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -28,13 +27,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import {
-  adminCreateAgent,
-  adminCreateSettlementBill,
-  adminListAgents,
-  adminMarkSettlementBillPaid,
-  adminUpdateAgent,
-} from '../agent/api'
+import { adminCreateAgent, adminListAgents } from '../agent/api'
+import { AgentsAdminTable } from './components/agents-admin-table'
 
 export function AgentsAdmin() {
   const { t } = useTranslation()
@@ -87,130 +81,26 @@ export function AgentsAdmin() {
       <SectionPageLayout.Title>{t('Agents')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-6'>
-        <div className='text-muted-foreground text-sm'>
-          {t('Approve resellers, set credit limits, and settle platform bills.')}{' '}
-          {t('Tip: you can also make a user an agent from Users → row menu → Make Agent.')}
-        </div>
-        <form
-          className='grid max-w-xl gap-3 rounded-md border p-4'
-          onSubmit={(event) => {
-            event.preventDefault()
-            const fd = new FormData(event.currentTarget)
-            createMutation.mutate({
-              userRef: String(fd.get('user_ref') ?? '').trim() || userRef,
-              name: String(fd.get('name') ?? '').trim() || name,
-              creditLimit:
-                String(fd.get('credit_limit') ?? '').trim() || creditLimit,
-            })
-          }}
-        >
-          <Label htmlFor='agent-user-ref'>{t('User ID or username')}</Label>
-          <Input
-            id='agent-user-ref'
-            name='user_ref'
-            value={userRef}
-            placeholder={t('e.g. 12 or alice')}
-            onChange={(e) => setUserRef(e.target.value)}
-            autoComplete='off'
-          />
-          <Label htmlFor='agent-name'>{t('Agent name')}</Label>
-          <Input
-            id='agent-name'
-            name='name'
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete='off'
-          />
-          <Label htmlFor='agent-credit'>{t('Credit limit')}</Label>
-          <Input
-            id='agent-credit'
-            name='credit_limit'
-            value={creditLimit}
-            onChange={(e) => setCreditLimit(e.target.value)}
-            autoComplete='off'
-          />
-          <Button type='submit' disabled={createMutation.isPending}>
-            {t('Create agent')}
-          </Button>
-        </form>
+          <div className='text-muted-foreground text-sm'>
+            {t(
+              'Approve resellers, set credit limits, and settle platform bills.'
+            )}{' '}
+            {t(
+              'Tip: you can also make a user an agent from Users → row menu → Make Agent.'
+            )}
+          </div>
 
-        <div className='space-y-3'>
-          {(agentsQuery.data?.items ?? []).map((agent) => (
-            <div key={agent.id} className='space-y-2 rounded-md border p-4'>
-              <div className='font-medium'>
-                #{agent.id} {agent.name} · user #{agent.user_id}
-              </div>
-              <div className='text-muted-foreground text-sm'>
-                {t('Invite code')}: {agent.invite_code} · {t('Status')}:{' '}
-                {agent.status} · {t('Debt')}: {agent.settlement_debt} /{' '}
-                {agent.credit_limit}
-              </div>
-              <div className='flex flex-wrap gap-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  render={
-                    <Link
-                      to='/agent/$section'
-                      params={{ section: 'channels' }}
-                      search={{ agent_id: agent.id }}
-                    />
-                  }
-                >
-                  {t('Manage console')}
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() =>
-                    adminUpdateAgent(agent.id, {
-                      status:
-                        agent.status === 'enabled' ? 'disabled' : 'enabled',
-                    })
-                      .then(() => {
-                        toast.success(t('Agent updated'))
-                        void agentsQuery.refetch()
-                      })
-                      .catch(handleServerError)
-                  }
-                >
-                  {agent.status === 'enabled' ? t('Disable') : t('Enable')}
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    const now = Math.floor(Date.now() / 1000)
-                    adminCreateSettlementBill(agent.id, {
-                      period_start: now - 86400 * 30,
-                      period_end: now,
-                    })
-                      .then(() => toast.success(t('Settlement bill created')))
-                      .catch(handleServerError)
-                  }}
-                >
-                  {t('Create bill')}
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    const billId = window.prompt(t('Enter bill ID to mark paid'))
-                    if (!billId) return
-                    adminMarkSettlementBillPaid(Number(billId))
-                      .then(() => {
-                        toast.success(t('Bill marked paid'))
-                        void agentsQuery.refetch()
-                      })
-                      .catch(handleServerError)
-                  }}
-                >
-                  {t('Mark bill paid')}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
+          <AgentsAdminTable
+            agents={agentsQuery.data?.items ?? []}
+            loading={agentsQuery.isLoading}
+            error={agentsQuery.isError}
+            onRetry={() => {
+              void agentsQuery.refetch()
+            }}
+            onChanged={() => {
+              void agentsQuery.refetch()
+            }}
+          />
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

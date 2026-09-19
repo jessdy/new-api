@@ -435,6 +435,95 @@ func UpdateAgentFields(id int, fields map[string]any) error {
 	return nil
 }
 
+func ListAgentsForAdmin(offset, limit int, status string, userId int) ([]map[string]any, int64, error) {
+	agents, total, err := ListAgents(offset, limit, status, userId)
+	if err != nil {
+		return nil, 0, err
+	}
+	items, err := attachAgentAdminListFields(agents)
+	return items, total, err
+}
+
+type agentSalesRow struct {
+	AgentId int   `gorm:"column:agent_id"`
+	Total   int64 `gorm:"column:total"`
+}
+
+func attachAgentAdminListFields(agents []*Agent) ([]map[string]any, error) {
+	items := make([]map[string]any, 0, len(agents))
+	if len(agents) == 0 {
+		return items, nil
+	}
+	userIds := make([]int, 0, len(agents))
+	agentIds := make([]int, 0, len(agents))
+	for _, agent := range agents {
+		userIds = append(userIds, agent.UserId)
+		agentIds = append(agentIds, agent.Id)
+	}
+
+	names := map[int]string{}
+	var owners []User
+	if err := DB.Select("id", "username").Where("id IN ?", userIds).Find(&owners).Error; err != nil {
+		return nil, err
+	}
+	for i := range owners {
+		names[owners[i].Id] = owners[i].Username
+	}
+
+	totals := map[int]int64{}
+	var totalRows []agentSalesRow
+	if err := DB.Model(&User{}).
+		Select("agent_id, COALESCE(SUM(used_quota), 0) as total").
+		Where("agent_id IN ?", agentIds).
+		Group("agent_id").
+		Scan(&totalRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range totalRows {
+		totals[row.AgentId] = row.Total
+	}
+
+	now := time.Now()
+	monthStart := alignHourlyStart(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix())
+	monthlies := map[int]int64{}
+	var monthRows []agentSalesRow
+	if err := DB.Table("quota_data").
+		Select("users.agent_id as agent_id, COALESCE(SUM(quota_data.quota), 0) as total").
+		Joins("INNER JOIN users ON users.id = quota_data.user_id").
+		Where("users.agent_id IN ? AND quota_data.created_at >= ?", agentIds, monthStart).
+		Group("users.agent_id").
+		Scan(&monthRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range monthRows {
+		monthlies[row.AgentId] = row.Total
+	}
+
+	unpaid := map[int]int{}
+	var bills []AgentSettlementBill
+	if err := DB.Select("id", "agent_id").
+		Where("agent_id IN ? AND status <> ?", agentIds, AgentSettlementBillStatusPaid).
+		Order("id desc").
+		Find(&bills).Error; err != nil {
+		return nil, err
+	}
+	for i := range bills {
+		if _, exists := unpaid[bills[i].AgentId]; !exists {
+			unpaid[bills[i].AgentId] = bills[i].Id
+		}
+	}
+
+	for _, agent := range agents {
+		item := AgentPublicSummary(agent)
+		item["username"] = names[agent.UserId]
+		item["monthly_sales"] = monthlies[agent.Id]
+		item["total_sales"] = totals[agent.Id]
+		item["unpaid_bill_id"] = unpaid[agent.Id]
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 func ListAgents(offset, limit int, status string, userId int) ([]*Agent, int64, error) {
 	query := DB.Model(&Agent{})
 	if status != "" {
