@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, expect, test } from 'vitest'
 
 import { alignToQuotaHour } from '../filters'
-import { aggregateModelUsage, calculateDashboardStats } from '../stats'
+import {
+  aggregateModelUsage,
+  applyConsumeLogTokenTotals,
+  calculateDashboardStats,
+} from '../stats'
 
 describe('dashboard query time alignment', () => {
   test('floors the start timestamp to the quota_data hour bucket', () => {
@@ -109,5 +113,45 @@ describe('dashboard token statistics', () => {
         quota: 400,
       },
     ])
+  })
+
+  test('replaces quota_data token columns with consume-log totals once per model', () => {
+    const merged = applyConsumeLogTokenTotals(
+      [
+        {
+          created_at: 1,
+          model_name: 'kimi-k3',
+          count: 2,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cache_tokens: 0,
+          quota: 100,
+        },
+        {
+          created_at: 2,
+          model_name: 'kimi-k3',
+          count: 1,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cache_tokens: 0,
+          quota: 50,
+        },
+      ],
+      [
+        {
+          model_name: 'kimi-k3',
+          prompt_tokens: 80,
+          completion_tokens: 20,
+          cache_tokens: 15,
+        },
+      ]
+    )
+
+    expect(calculateDashboardStats(merged)).toMatchObject({
+      promptTokens: 80,
+      completionTokens: 20,
+      cacheTokens: 15,
+      totalTokens: 100,
+    })
   })
 })

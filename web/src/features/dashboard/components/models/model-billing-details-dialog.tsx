@@ -28,8 +28,11 @@ import {
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import {
+  getAgentLogStats,
   getAgentModelBillingLogs,
   getAllLogs,
+  getLogStats,
+  getUserLogStats,
   getUserLogs,
 } from '@/features/usage-logs/api'
 import { DetailsDialog } from '@/features/usage-logs/components/dialogs/details-dialog'
@@ -109,6 +112,40 @@ export function ModelBillingDetailsDialog(
       }
     },
   })
+  const usageQuery = useQuery({
+    queryKey: [
+      'model-billing-usage',
+      props.scope,
+      props.modelName,
+      props.startTimestamp,
+      props.endTimestamp,
+      props.username,
+    ],
+    enabled: props.open,
+    queryFn: async () => {
+      const params = {
+        type: 2,
+        model_name: props.modelName,
+        start_timestamp: props.startTimestamp,
+        end_timestamp: props.endTimestamp,
+        ...(props.username && { username: props.username }),
+      }
+      let response
+      if (props.scope === 'admin') {
+        response = await getLogStats(params)
+      } else if (props.scope === 'agent') {
+        response = await getAgentLogStats(params)
+      } else {
+        response = await getUserLogStats(params)
+      }
+      return requireServerSuccess(response).data
+    },
+  })
+  const promptTokens = usageQuery.data?.prompt_tokens ?? props.promptTokens
+  const completionTokens =
+    usageQuery.data?.completion_tokens ?? props.completionTokens
+  const cacheTokens = usageQuery.data?.cache_tokens ?? props.cacheTokens
+  const quota = Number(usageQuery.data?.quota ?? props.quota)
   const total = query.data?.total ?? 0
   let emptyContentKey = 'No data'
   if (query.isPending) {
@@ -182,16 +219,16 @@ export function ModelBillingDetailsDialog(
       >
         <div className='text-muted-foreground mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4'>
           <div>
-            {t('Input Tokens')}: {formatNumber(props.promptTokens)}
+            {t('Input Tokens')}: {formatNumber(promptTokens)}
           </div>
           <div>
-            {t('Output Tokens')}: {formatNumber(props.completionTokens)}
+            {t('Output Tokens')}: {formatNumber(completionTokens)}
           </div>
           <div>
-            {t('Cache Tokens')}: {formatNumber(props.cacheTokens)}
+            {t('Cache Tokens')}: {formatNumber(cacheTokens)}
           </div>
           <div>
-            {t('Billing')}: {formatQuota(props.quota)}
+            {t('Billing')}: {formatQuota(quota)}
           </div>
         </div>
         <StaticDataTable

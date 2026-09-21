@@ -96,3 +96,52 @@ export function aggregateModelUsage(
       left.modelName.localeCompare(right.modelName)
   )
 }
+
+export interface ConsumeLogTokenTotal {
+  model_name: string
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+}
+
+export function applyConsumeLogTokenTotals(
+  data: QuotaDataItem[],
+  totals: ConsumeLogTokenTotal[]
+): QuotaDataItem[] {
+  const totalsByModel = new Map(
+    totals.map((item) => [item.model_name.trim() || '—', item])
+  )
+  const assigned = new Set<string>()
+  return data.map((item) => {
+    const modelName = item.model_name?.trim() || '—'
+    const total = totalsByModel.get(modelName)
+    if (!total) {
+      return {
+        ...item,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cache_tokens: 0,
+        token_used: 0,
+      }
+    }
+    if (assigned.has(modelName)) {
+      return {
+        ...item,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cache_tokens: 0,
+        token_used: 0,
+      }
+    }
+    assigned.add(modelName)
+    const promptTokens = Number(total.prompt_tokens) || 0
+    const completionTokens = Number(total.completion_tokens) || 0
+    return {
+      ...item,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      cache_tokens: Number(total.cache_tokens) || 0,
+      token_used: promptTokens + completionTokens,
+    }
+  })
+}

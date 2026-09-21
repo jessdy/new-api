@@ -24,10 +24,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import {
+  applyConsumeLogTokenTotals,
   buildQueryParams,
   calculateDashboardStats,
   getDashboardQueryTimeRange,
 } from '@/features/dashboard/lib'
+import { getLogUsageByModel } from '@/features/usage-logs/api'
 import type {
   QuotaDataItem,
   DashboardFilters,
@@ -90,14 +92,36 @@ export function LogStatCards(props: LogStatCardsProps) {
     const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
     setTimeRangeMinutes(timeDiff)
 
-    void getUserQuotaDates(
-      buildQueryParams(timeRange, filters),
-      isAdmin,
-      props.aggregateAgent
-    )
-      .then((res) => {
+    let usageScope: 'admin' | 'agent' | 'self' = 'self'
+    if (isAdmin) {
+      usageScope = 'admin'
+    } else if (props.aggregateAgent) {
+      usageScope = 'agent'
+    }
+
+    void Promise.all([
+      getUserQuotaDates(
+        buildQueryParams(timeRange, filters),
+        isAdmin,
+        props.aggregateAgent
+      ),
+      getLogUsageByModel(
+        {
+          type: 2,
+          start_timestamp: timeRange.start_timestamp,
+          end_timestamp: timeRange.end_timestamp,
+          ...(filters?.username && { username: filters.username }),
+        },
+        usageScope
+      ).catch(() => null),
+    ])
+      .then(([res, usageRes]) => {
         if (abortController.signal.aborted) return
-        const data = res?.data || []
+        const quotaRows = res?.data || []
+        const data =
+          usageRes?.data != null
+            ? applyConsumeLogTokenTotals(quotaRows, usageRes.data)
+            : quotaRows
         setStats(calculateDashboardStats(data))
         onDataUpdate?.(data, false)
       })

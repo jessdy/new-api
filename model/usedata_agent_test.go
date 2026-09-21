@@ -296,3 +296,52 @@ func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
 	assert.Equal(t, int64(13), usage.PlatformQuota)
 	assert.Equal(t, int64(14), usage.TokenUsed)
 }
+
+func TestSumConsumeLogUsageIncludesCacheTokensFromOther(t *testing.T) {
+	db := newAgentTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	previousLogDB := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = previousLogDB })
+
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			UserId: 1, Username: "admin", Type: LogTypeConsume, ModelName: "kimi-k3",
+			CreatedAt: 1000, Quota: 10, PromptTokens: 80, CompletionTokens: 20,
+			Other: common.MapToJsonStr(map[string]any{"cache_tokens": 15}),
+		},
+		{
+			UserId: 1, Username: "admin", Type: LogTypeConsume, ModelName: "kimi-k3",
+			CreatedAt: 1100, Quota: 5, PromptTokens: 40, CompletionTokens: 10,
+			Other: common.MapToJsonStr(map[string]any{"cache_tokens": 8}),
+		},
+		{
+			UserId: 2, Username: "other", Type: LogTypeConsume, ModelName: "glm-5.3",
+			CreatedAt: 1000, Quota: 9, PromptTokens: 7, CompletionTokens: 3,
+			Other: common.MapToJsonStr(map[string]any{"cache_tokens": 2}),
+		},
+	}).Error)
+
+	totals, err := SumConsumeLogUsage(ConsumeLogUsageQuery{
+		StartTimestamp: 900,
+		EndTimestamp:   2000,
+		ModelName:      "kimi-k3",
+	})
+	require.NoError(t, err)
+	require.Len(t, totals, 1)
+	assert.Equal(t, int64(120), totals[0].PromptTokens)
+	assert.Equal(t, int64(30), totals[0].CompletionTokens)
+	assert.Equal(t, int64(23), totals[0].CacheTokens)
+	assert.Equal(t, int64(15), totals[0].Quota)
+	assert.Equal(t, int64(2), totals[0].Count)
+
+	byModel, err := SumConsumeLogUsage(ConsumeLogUsageQuery{
+		StartTimestamp: 900,
+		EndTimestamp:   2000,
+		ByModel:        true,
+	})
+	require.NoError(t, err)
+	require.Len(t, byModel, 2)
+	assert.Equal(t, "kimi-k3", byModel[0].ModelName)
+	assert.Equal(t, int64(23), byModel[0].CacheTokens)
+}

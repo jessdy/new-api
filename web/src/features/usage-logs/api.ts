@@ -25,6 +25,7 @@ import type {
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
+  GetLogUsageByModelResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   TaskArtifactsResponse,
@@ -92,6 +93,31 @@ export const getLogStats = (params: GetLogStatsParams = {}) =>
 export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
+
+export const getAgentLogStats = (
+  params: Pick<
+    GetLogStatsParams,
+    'model_name' | 'start_timestamp' | 'end_timestamp'
+  >
+) => fetchLogStats('/api/log/agent/billing', params, true)
+
+export async function getLogUsageByModel(
+  params: GetLogStatsParams,
+  scope: 'admin' | 'agent' | 'self'
+): Promise<GetLogUsageByModelResponse> {
+  const queryParams = buildQueryParams({
+    ...params,
+    by_model: true,
+  })
+  let path = '/api/log/self/stat'
+  if (scope === 'admin') {
+    path = '/api/log/stat'
+  } else if (scope === 'agent') {
+    path = '/api/log/agent/billing/stat'
+  }
+  const res = await api.get(`${path}?${queryParams}`)
+  return res.data
+}
 
 export async function getUserInfo(
   userId: number

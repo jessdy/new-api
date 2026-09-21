@@ -775,9 +775,134 @@ func platformQuotaFromConsumeLog(other string) int64 {
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota            int   `json:"quota"`
+	Rpm              int   `json:"rpm"`
+	Tpm              int   `json:"tpm"`
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	CacheTokens      int64 `json:"cache_tokens"`
+}
+
+type ConsumeLogUsage struct {
+	ModelName        string `json:"model_name"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	CacheTokens      int64  `json:"cache_tokens"`
+	Quota            int64  `json:"quota"`
+	Count            int64  `json:"count"`
+}
+
+type ConsumeLogUsageQuery struct {
+	StartTimestamp int64
+	EndTimestamp   int64
+	ModelName      string
+	Username       string
+	UserID         int
+	UserIDs        []int
+	ByModel        bool
+}
+
+func SumConsumeLogUsage(query ConsumeLogUsageQuery) ([]ConsumeLogUsage, error) {
+	tx := LOG_DB.Table("logs").Select("model_name, prompt_tokens, completion_tokens, quota, other").Where("type = ?", LogTypeConsume)
+	var err error
+	if tx, err = applyExplicitLogTextFilter(tx, "model_name", query.ModelName); err != nil {
+		return nil, err
+	}
+	if tx, err = applyExplicitLogTextFilter(tx, "username", query.Username); err != nil {
+		return nil, err
+	}
+	if query.UserID > 0 {
+		tx = tx.Where("user_id = ?", query.UserID)
+	}
+	if len(query.UserIDs) > 0 {
+		tx = tx.Where("user_id IN ?", query.UserIDs)
+	}
+	if query.StartTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", query.StartTimestamp)
+	}
+	if query.EndTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", query.EndTimestamp)
+	}
+
+	var rows []struct {
+		ModelName        string
+		PromptTokens     int
+		CompletionTokens int
+		Quota            int
+		Other            string
+	}
+	if err := tx.Find(&rows).Error; err != nil {
+		common.SysError("failed to query consume log usage: " + err.Error())
+		return nil, errors.New("查询统计数据失败")
+	}
+
+	byModel := make(map[string]*ConsumeLogUsage)
+	totals := &ConsumeLogUsage{}
+	for _, row := range rows {
+		modelName := strings.TrimSpace(row.ModelName)
+		if modelName == "" {
+			modelName = "—"
+		}
+		cacheTokens := cacheTokensFromConsumeLog(row.Other)
+		prompt := int64(row.PromptTokens)
+		completion := int64(row.CompletionTokens)
+		quota := int64(row.Quota)
+		totals.PromptTokens += prompt
+		totals.CompletionTokens += completion
+		totals.CacheTokens += cacheTokens
+		totals.Quota += quota
+		totals.Count++
+		if !query.ByModel {
+			continue
+		}
+		item := byModel[modelName]
+		if item == nil {
+			item = &ConsumeLogUsage{ModelName: modelName}
+			byModel[modelName] = item
+		}
+		item.PromptTokens += prompt
+		item.CompletionTokens += completion
+		item.CacheTokens += cacheTokens
+		item.Quota += quota
+		item.Count++
+	}
+	if !query.ByModel {
+		totals.ModelName = strings.TrimSpace(query.ModelName)
+		return []ConsumeLogUsage{*totals}, nil
+	}
+	usages := make([]ConsumeLogUsage, 0, len(byModel))
+	for _, item := range byModel {
+		usages = append(usages, *item)
+	}
+	slices.SortFunc(usages, func(a, b ConsumeLogUsage) int {
+		if c := cmp.Compare(b.Count, a.Count); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.ModelName, b.ModelName)
+	})
+	return usages, nil
+}
+
+func cacheTokensFromConsumeLog(other string) int64 {
+	if strings.TrimSpace(other) == "" {
+		return 0
+	}
+	values, err := common.StrToMap(other)
+	if err != nil || values == nil {
+		return 0
+	}
+	switch value := values["cache_tokens"].(type) {
+	case float64:
+		return int64(value)
+	case float32:
+		return int64(value)
+	case int:
+		return int64(value)
+	case int64:
+		return value
+	default:
+		return 0
+	}
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {

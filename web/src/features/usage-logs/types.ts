@@ -262,6 +262,18 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  cache_tokens?: number
+}
+
+export interface ConsumeLogUsage {
+  model_name: string
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  quota: number
+  count: number
 }
 
 // ============================================================================
@@ -418,12 +430,19 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  by_model?: boolean
 }
 
 export interface GetLogStatsResponse {
   success: boolean
   message?: string
   data?: LogStatistics
+}
+
+export interface GetLogUsageByModelResponse {
+  success: boolean
+  message?: string
+  data?: ConsumeLogUsage[]
 }
 
 // ============================================================================

@@ -21,14 +21,17 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { getUserLogs } from '@/features/usage-logs/api'
+import { getUserLogStats, getUserLogs } from '@/features/usage-logs/api'
 import { formatLogQuota } from '@/lib/format'
 
 import { ModelUsageTable } from '../model-usage-table'
 
 vi.mock('@/features/usage-logs/api', () => ({
+  getAgentLogStats: vi.fn(),
   getAgentModelBillingLogs: vi.fn(),
   getAllLogs: vi.fn(),
+  getLogStats: vi.fn(),
+  getUserLogStats: vi.fn(),
   getUserLogs: vi.fn(),
 }))
 
@@ -106,6 +109,17 @@ describe('model usage table', () => {
   })
 
   test('opens the exact calculation details for a selected billing record', async () => {
+    vi.mocked(getUserLogStats).mockResolvedValue({
+      success: true,
+      data: {
+        quota: 12,
+        rpm: 0,
+        tpm: 0,
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        cache_tokens: 15,
+      },
+    })
     vi.mocked(getUserLogs).mockResolvedValue({
       success: true,
       data: {
@@ -175,9 +189,11 @@ describe('model usage table', () => {
     )
 
     expect(await screen.findByText('Billing Details · gpt-a')).toBeTruthy()
-    expect(screen.getByText('Cache Tokens: 0')).toBeTruthy()
+    expect(await screen.findByText('Cache Tokens: 15')).toBeTruthy()
+    expect(screen.getByText('Input Tokens: 100')).toBeTruthy()
+    expect(screen.getByText('Output Tokens: 20')).toBeTruthy()
     expect(screen.getByRole('columnheader', { name: 'Cache Tokens' })).toBeTruthy()
-    expect(screen.getByText('15')).toBeTruthy()
+    expect(screen.getAllByText('15').length).toBeGreaterThan(0)
     expect(getUserLogs).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 2,
