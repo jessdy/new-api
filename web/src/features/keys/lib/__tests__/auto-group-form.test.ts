@@ -42,6 +42,9 @@ const baseApiKey: ApiKey = {
   remain_quota: 0,
   used_quota: 0,
   unlimited_quota: true,
+  quota_period: '',
+  period_quota: 0,
+  period_reset_at: 0,
   expired_time: -1,
   created_time: 1,
   accessed_time: 0,
@@ -163,6 +166,54 @@ describe('API key Auto group form mapping', () => {
     if (result.success) return
     expect(result.error.issues[0]?.path[0]).toBe('auto_groups')
     expect(result.error.issues[0]?.message).toBe('Select at most 1 Auto groups')
+  })
+
+  test('maps periodic quota on create and edit', () => {
+    const created = {
+      ...getApiKeyFormDefaultValues(false),
+      name: 'daily',
+      quota_mode: 'period' as const,
+      quota_period: 'month' as const,
+      remain_quota_dollars: 10,
+    }
+    const payload = transformFormDataToPayload(created)
+
+    expect(payload.unlimited_quota).toBe(false)
+    expect(payload.quota_period).toBe('month')
+    expect(payload.period_quota).toBe(payload.remain_quota)
+    expect(payload.remain_quota).toBeGreaterThan(0)
+
+    const defaults = transformApiKeyToFormDefaults(
+      {
+        ...baseApiKey,
+        unlimited_quota: false,
+        remain_quota: payload.remain_quota / 2,
+        quota_period: 'month',
+        period_quota: payload.period_quota,
+      },
+      [],
+      5
+    )
+    expect(defaults.quota_mode).toBe('period')
+    expect(defaults.quota_period).toBe('month')
+    expect(defaults.remain_quota_dollars).toBe(10)
+  })
+
+  test('rejects a zero periodic quota', () => {
+    const result = getApiKeyFormSchema(t).safeParse({
+      ...getApiKeyFormDefaultValues(false),
+      name: 'empty-period',
+      quota_mode: 'period',
+      quota_period: 'day',
+      remain_quota_dollars: 0,
+    })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.issues[0]?.path).toEqual(['remain_quota_dollars'])
+    expect(result.error.issues[0]?.message).toBe(
+      'Quota must be greater than zero'
+    )
   })
 
   test('rejects duplicate custom groups', () => {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -52,12 +53,30 @@ func maxTokenQuota() int {
 	return quota
 }
 
+func respondTokenQuotaPeriodError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	switch {
+	case errors.Is(err, model.ErrTokenQuotaPeriodInvalid):
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaPeriodInvalid)
+	case errors.Is(err, model.ErrTokenPeriodQuotaInvalid):
+		common.ApiErrorI18n(c, i18n.MsgTokenPeriodQuotaInvalid)
+	case errors.Is(err, model.ErrTokenQuotaPeriodUnlimited):
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaPeriodUnlimited)
+	default:
+		common.ApiError(c, err)
+	}
+	return true
+}
+
 func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if token == nil {
 		return nil
 	}
 	maskedToken := *token
 	maskedToken.Key = token.GetMaskedKey()
+	maskedToken.RemainQuota = token.EffectiveRemainQuota(common.GetTimestamp())
 	autoGroups, err := token.GetAutoGroups()
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to parse auto groups for token %d: %v", token.Id, err))
@@ -233,11 +252,12 @@ func GetTokenStatus(c *gin.Context) {
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
+	remainQuota := token.EffectiveRemainQuota(common.GetTimestamp())
 	c.JSON(http.StatusOK, gin.H{
 		"object":          "credit_summary",
-		"total_granted":   token.RemainQuota,
+		"total_granted":   remainQuota,
 		"total_used":      0, // not supported currently
-		"total_available": token.RemainQuota,
+		"total_available": remainQuota,
 		"expires_at":      expiredAt * 1000,
 	})
 }
@@ -273,6 +293,7 @@ func GetTokenUsage(c *gin.Context) {
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
+	remainQuota := token.EffectiveRemainQuota(common.GetTimestamp())
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    true,
@@ -280,10 +301,12 @@ func GetTokenUsage(c *gin.Context) {
 		"data": gin.H{
 			"object":               "token_usage",
 			"name":                 token.Name,
-			"total_granted":        token.RemainQuota + token.UsedQuota,
+			"total_granted":        remainQuota + token.UsedQuota,
 			"total_used":           token.UsedQuota,
-			"total_available":      token.RemainQuota,
+			"total_available":      remainQuota,
 			"unlimited_quota":      token.UnlimitedQuota,
+			"quota_period":         token.QuotaPeriod,
+			"period_quota":         token.PeriodQuota,
 			"model_limits":         token.GetModelLimitsMap(),
 			"model_limits_enabled": token.ModelLimitsEnabled,
 			"expires_at":           expiredAt,
@@ -305,6 +328,9 @@ func AddToken(c *gin.Context) {
 	}
 	params := tokenAuditParams(c)
 	params["name"] = token.Name
+	if respondTokenQuotaPeriodError(c, token.ApplyQuotaPeriod(nil, common.GetTimestamp())) {
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -354,6 +380,9 @@ func AddToken(c *gin.Context) {
 		ExpiredTime:        token.ExpiredTime,
 		RemainQuota:        token.RemainQuota,
 		UnlimitedQuota:     token.UnlimitedQuota,
+		QuotaPeriod:        token.QuotaPeriod,
+		PeriodQuota:        token.PeriodQuota,
+		PeriodResetAt:      token.PeriodResetAt,
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
@@ -414,17 +443,6 @@ func UpdateToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := maxTokenQuota()
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
-	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -432,24 +450,14 @@ func UpdateToken(c *gin.Context) {
 	}
 	params["name"] = cleanToken.Name
 	previous := *cleanToken
-	if token.Status == common.TokenStatusEnabled {
-		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
-			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
-			return
-		}
-		if cleanToken.Status == common.TokenStatusExhausted && cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
-			common.ApiErrorI18n(c, i18n.MsgTokenExhaustedCannotEable)
-			return
-		}
-	}
-	if statusOnly != "" {
-		cleanToken.Status = token.Status
-	} else {
+	if statusOnly == "" {
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
 		cleanToken.UnlimitedQuota = token.UnlimitedQuota
+		cleanToken.QuotaPeriod = token.QuotaPeriod
+		cleanToken.PeriodQuota = token.PeriodQuota
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
@@ -463,6 +471,39 @@ func UpdateToken(c *gin.Context) {
 				return
 			}
 		}
+		if respondTokenQuotaPeriodError(c, cleanToken.ApplyQuotaPeriod(&previous, common.GetTimestamp())) {
+			return
+		}
+	}
+	if !cleanToken.UnlimitedQuota {
+		if cleanToken.RemainQuota < 0 {
+			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+			return
+		}
+		maxQuotaValue := maxTokenQuota()
+		if cleanToken.RemainQuota > maxQuotaValue {
+			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
+			return
+		}
+	}
+	if token.Status == common.TokenStatusEnabled {
+		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
+			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
+			return
+		}
+		if cleanToken.Status == common.TokenStatusExhausted {
+			if _, resetErr := cleanToken.RefreshPeriodQuota(common.GetTimestamp()); resetErr != nil {
+				common.ApiError(c, resetErr)
+				return
+			}
+			if cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
+				common.ApiErrorI18n(c, i18n.MsgTokenExhaustedCannotEable)
+				return
+			}
+		}
+	}
+	if statusOnly != "" {
+		cleanToken.Status = token.Status
 	}
 	err = cleanToken.Update()
 	if err != nil {
@@ -482,6 +523,8 @@ func UpdateToken(c *gin.Context) {
 			{"expired_time", previous.ExpiredTime != cleanToken.ExpiredTime},
 			{"remain_quota", previous.RemainQuota != cleanToken.RemainQuota},
 			{"unlimited_quota", previous.UnlimitedQuota != cleanToken.UnlimitedQuota},
+			{"quota_period", previous.QuotaPeriod != cleanToken.QuotaPeriod},
+			{"period_quota", previous.PeriodQuota != cleanToken.PeriodQuota},
 			{"model_limits_enabled", previous.ModelLimitsEnabled != cleanToken.ModelLimitsEnabled},
 			{"model_limits", previous.ModelLimits != cleanToken.ModelLimits},
 			{"allow_ips", (previous.AllowIps == nil) != (cleanToken.AllowIps == nil) ||

@@ -39,9 +39,14 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
   useSystemConfigStore((state) => state.config.currency)
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
-  const used = props.apiKey.used_quota
+  const isPeriod =
+    props.apiKey.quota_period === 'day' || props.apiKey.quota_period === 'month'
   const remaining = props.apiKey.remain_quota
-  const total = used + remaining
+  const periodQuota = props.apiKey.period_quota || 0
+  const used = isPeriod
+    ? Math.max(0, periodQuota - remaining)
+    : props.apiKey.used_quota
+  const total = isPeriod ? periodQuota : props.apiKey.used_quota + remaining
   const hasProgress = !props.apiKey.unlimited_quota && total > 0
   const percentage = hasProgress
     ? Math.min(100, Math.max(0, (remaining / total) * 100))
@@ -64,21 +69,37 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
   if (isInactive) progressColor = 'text-muted-foreground/60'
   else if (percentage <= 10) progressColor = 'text-rose-500'
   else if (percentage <= 30) progressColor = 'text-amber-500'
-  const usageDescription = `${t('Used amount')} ${formattedUsed}`
+  const usedLabel = isPeriod ? t('Used this period') : t('Used amount')
+  const usageDescription = `${usedLabel} ${formattedUsed}`
   const remainingDescription = hasProgress
     ? `${t('Remaining')} ${formattedRemaining}; ${t('Remaining percentage')} ${formattedPercentage}%`
     : `${t('Remaining')} ${formattedRemaining}`
   const triggerLabel = props.apiKey.unlimited_quota
     ? `${t('Unlimited')}; ${usageDescription}`
     : `${remainingDescription}; ${usageDescription}`
+  let quotaTitle = `${t('Quota')} (${quotaUnit})`
+  if (props.apiKey.quota_period === 'month') {
+    quotaTitle = `${t('Monthly quota')} (${quotaUnit})`
+  } else if (props.apiKey.quota_period === 'day') {
+    quotaTitle = `${t('Daily quota')} (${quotaUnit})`
+  }
 
   const details = []
+  if (isPeriod) {
+    details.push({
+      label: t('Reset period'),
+      value: props.apiKey.quota_period === 'month' ? t('Monthly') : t('Daily'),
+    })
+  }
   if (!props.apiKey.unlimited_quota) {
     details.push({ label: t('Remaining'), value: formattedRemaining })
   }
-  details.push({ label: t('Used amount'), value: formattedUsed })
+  details.push({ label: usedLabel, value: formattedUsed })
   if (!props.apiKey.unlimited_quota) {
-    details.push({ label: t('Current total quota'), value: formattedTotal })
+    details.push({
+      label: isPeriod ? t('Period quota') : t('Current total quota'),
+      value: formattedTotal,
+    })
   }
   if (hasProgress) {
     details.push({
@@ -87,24 +108,29 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
     })
   }
 
+  let description = t(
+    'Total = used + remaining. It is not an initial allocation or a periodic budget; changing the remaining quota changes the total and percentage.'
+  )
+  if (props.apiKey.unlimited_quota) {
+    description = t(
+      'This API key has no quota limit. Requests still require available wallet or subscription quota.'
+    )
+  } else if (isPeriod) {
+    description = t(
+      'This API key refills a fixed quota at the start of each day or month.'
+    )
+  }
+
   return (
     <QuotaDetailsPopover
-      title={`${t('Quota')} (${quotaUnit})`}
+      title={quotaTitle}
       triggerLabel={
         props.variant === 'card'
-          ? `${t('Quota')} (${quotaUnit}); ${triggerLabel}`
+          ? `${quotaTitle}; ${triggerLabel}`
           : triggerLabel
       }
       details={details}
-      description={
-        props.apiKey.unlimited_quota
-          ? t(
-              'This API key has no quota limit. Requests still require available wallet or subscription quota.'
-            )
-          : t(
-              'Total = used + remaining. It is not an initial allocation or a periodic budget; changing the remaining quota changes the total and percentage.'
-            )
-      }
+      description={description}
       className={
         props.variant === 'card' ? 'space-y-2.5' : 'max-w-45 space-y-1.5'
       }
@@ -155,7 +181,7 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
           {props.apiKey.unlimited_quota ? t('Unlimited') : formattedRemaining}
         </span>
         {props.variant === 'card' && (
-          <span className='text-muted-foreground'>{t('Used amount')}</span>
+          <span className='text-muted-foreground'>{usedLabel}</span>
         )}
         <span
           className={cn(

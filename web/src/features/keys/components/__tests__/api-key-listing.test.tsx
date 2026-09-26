@@ -196,6 +196,29 @@ it.each([
   }
 )
 
+it('shows daily remaining against the period quota instead of lifetime usage', async () => {
+  renderQuota({
+    ...key,
+    remain_quota: 25_000_000,
+    used_quota: 999,
+    quota_period: 'day',
+    period_quota: 100_000_000,
+  })
+  const button = screen.getByRole('button', {
+    name: /Remaining 50; Remaining percentage 25%; Used this period 150/,
+  })
+  expect(button).toHaveTextContent('50150')
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
+  await userEvent.click(button)
+  const detail = await screen.findByRole('dialog')
+  expect(detail).toHaveTextContent('Daily quota')
+  expect(within(detail).getByText('Daily')).toBeInTheDocument()
+  expect(within(detail).getByText('Used this period')).toBeInTheDocument()
+  expect(detail).toHaveTextContent(
+    'This API key refills a fixed quota at the start of each day or month.'
+  )
+})
+
 it('shows unlimited with cumulative usage and explains it on demand', async () => {
   renderQuota({ ...key, unlimited_quota: true })
   const button = screen.getByRole('button', { name: /Unlimited/ })

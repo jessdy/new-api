@@ -4,11 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+)
+
+const (
+	TokenQuotaPeriodDay   = "day"
+	TokenQuotaPeriodMonth = "month"
+)
+
+var (
+	ErrTokenQuotaPeriodInvalid   = errors.New("invalid token quota period")
+	ErrTokenPeriodQuotaInvalid   = errors.New("invalid token period quota")
+	ErrTokenQuotaPeriodUnlimited = errors.New("periodic quota cannot be unlimited")
 )
 
 type Token struct {
@@ -22,6 +34,9 @@ type Token struct {
 	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
 	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
 	UnlimitedQuota     bool           `json:"unlimited_quota"`
+	QuotaPeriod        string         `json:"quota_period" gorm:"type:varchar(16);default:''"` // "", "day", "month"
+	PeriodQuota        int            `json:"period_quota" gorm:"default:0"`
+	PeriodResetAt      int64          `json:"period_reset_at" gorm:"bigint;default:0"`
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
@@ -217,12 +232,142 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	return tokens, total, nil
 }
 
+func IsTokenQuotaPeriod(period string) bool {
+	return period == TokenQuotaPeriodDay || period == TokenQuotaPeriodMonth
+}
+
+func QuotaPeriodStart(period string, now int64) int64 {
+	t := time.Unix(now, 0).In(time.Local)
+	year, month, day := t.Date()
+	switch period {
+	case TokenQuotaPeriodDay:
+		return time.Date(year, month, day, 0, 0, 0, 0, time.Local).Unix()
+	case TokenQuotaPeriodMonth:
+		return time.Date(year, month, 1, 0, 0, 0, 0, time.Local).Unix()
+	default:
+		return 0
+	}
+}
+
+func (token *Token) HasQuotaPeriod() bool {
+	return token != nil && IsTokenQuotaPeriod(token.QuotaPeriod)
+}
+
+func (token *Token) NeedsPeriodReset(now int64) bool {
+	return token.HasQuotaPeriod() && token.PeriodResetAt < QuotaPeriodStart(token.QuotaPeriod, now)
+}
+
+func (token *Token) EffectiveRemainQuota(now int64) int {
+	if token.NeedsPeriodReset(now) {
+		return token.PeriodQuota
+	}
+	return token.RemainQuota
+}
+
+func (token *Token) ApplyQuotaPeriod(previous *Token, now int64) error {
+	period := strings.TrimSpace(token.QuotaPeriod)
+	switch period {
+	case "", "none":
+		token.QuotaPeriod = ""
+		token.PeriodQuota = 0
+		token.PeriodResetAt = 0
+		return nil
+	case TokenQuotaPeriodDay, TokenQuotaPeriodMonth:
+		if token.UnlimitedQuota {
+			return ErrTokenQuotaPeriodUnlimited
+		}
+		amount := token.PeriodQuota
+		if amount <= 0 {
+			amount = token.RemainQuota
+		}
+		if amount <= 0 {
+			return ErrTokenPeriodQuotaInvalid
+		}
+		shouldRefill := previous == nil ||
+			previous.QuotaPeriod != period ||
+			previous.PeriodQuota != amount
+		token.QuotaPeriod = period
+		token.PeriodQuota = amount
+		token.UnlimitedQuota = false
+		if shouldRefill {
+			token.RemainQuota = amount
+			token.PeriodResetAt = QuotaPeriodStart(period, now)
+			return nil
+		}
+		token.RemainQuota = previous.RemainQuota
+		token.PeriodResetAt = previous.PeriodResetAt
+		return nil
+	default:
+		return ErrTokenQuotaPeriodInvalid
+	}
+}
+
+func (token *Token) RefreshPeriodQuota(now int64) (bool, error) {
+	if token == nil || token.Id <= 0 || !token.HasQuotaPeriod() {
+		return false, nil
+	}
+	start := QuotaPeriodStart(token.QuotaPeriod, now)
+	if token.PeriodResetAt >= start {
+		return false, nil
+	}
+	updates := map[string]any{
+		"remain_quota":    token.PeriodQuota,
+		"period_reset_at": start,
+	}
+	if token.Status == common.TokenStatusExhausted && token.PeriodQuota > 0 {
+		updates["status"] = common.TokenStatusEnabled
+	}
+	result := DB.Model(&Token{}).Where("id = ? AND period_reset_at < ?", token.Id, start).Updates(updates)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		fresh, err := GetTokenById(token.Id)
+		if err != nil {
+			return false, err
+		}
+		*token = *fresh
+		return false, nil
+	}
+	token.RemainQuota = token.PeriodQuota
+	token.PeriodResetAt = start
+	if token.Status == common.TokenStatusExhausted && token.PeriodQuota > 0 {
+		token.Status = common.TokenStatusEnabled
+	}
+	if token.Key != "" {
+		if cacheErr := invalidateTokenCacheForMutation(token.Key); cacheErr != nil {
+			common.SysLog("failed to invalidate token cache after period reset: " + cacheErr.Error())
+		}
+	}
+	return true, nil
+}
+
+func EnsureTokenPeriodQuota(id int, key string) error {
+	var (
+		token *Token
+		err   error
+	)
+	if key != "" {
+		token, err = GetTokenByKey(key, false)
+	} else {
+		token, err = GetTokenById(id)
+	}
+	if err != nil {
+		return err
+	}
+	_, err = token.RefreshPeriodQuota(common.GetTimestamp())
+	return err
+}
+
 func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
 		return nil, ErrTokenNotProvided
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
+		if _, resetErr := token.RefreshPeriodQuota(common.GetTimestamp()); resetErr != nil {
+			common.SysLog("failed to refresh token period quota: " + resetErr.Error())
+		}
 		if token.Status == common.TokenStatusExhausted ||
 			token.Status == common.TokenStatusExpired ||
 			token.Status != common.TokenStatusEnabled {
@@ -313,6 +458,7 @@ func (token *Token) Update() (err error) {
 		common.SysLog("failed to invalidate token cache before update: " + cacheErr.Error())
 	}
 	return DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
+		"quota_period", "period_quota", "period_reset_at",
 		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").Updates(token).Error
 }
 

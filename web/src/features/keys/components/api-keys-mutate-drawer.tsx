@@ -51,6 +51,8 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Sheet,
   SheetClose,
@@ -79,6 +81,7 @@ import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
   type ApiKeyFormValues,
+  type ApiKeyQuotaMode,
   getApiKeyFormDefaultValues,
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
@@ -361,7 +364,9 @@ export function ApiKeysMutateDrawer({
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
   const autoGroupsMode = form.watch('auto_groups_mode')
-  const unlimitedQuota = form.watch('unlimited_quota')
+  const quotaMode = form.watch('quota_mode')
+  const quotaPeriod = form.watch('quota_period')
+  const showQuotaAmount = quotaMode !== 'unlimited'
 
   return (
     <Sheet
@@ -611,7 +616,119 @@ export function ApiKeysMutateDrawer({
                 icon={<WalletCards className='size-4' />}
                 iconTone='success'
               />
-              {!unlimitedQuota && (
+              <FormField
+                control={form.control}
+                name='quota_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <RadioGroup
+                        value={field.value}
+                        onValueChange={(value) =>
+                          field.onChange(value as ApiKeyQuotaMode)
+                        }
+                        className='grid gap-2'
+                      >
+                        {(
+                          [
+                            {
+                              value: 'unlimited',
+                              title: t('Unlimited Quota'),
+                              description: t(
+                                'Enable unlimited quota for this API key'
+                              ),
+                            },
+                            {
+                              value: 'total',
+                              title: t('Quota'),
+                              description: t(
+                                'A remaining balance that does not refill automatically'
+                              ),
+                            },
+                            {
+                              value: 'period',
+                              title: t('Periodic Quota'),
+                              description: t(
+                                'A fixed amount that refills every day or month'
+                              ),
+                            },
+                          ] as const
+                        ).map((option) => (
+                          <Label
+                            key={option.value}
+                            htmlFor={`quota-mode-${option.value}`}
+                            className='hover:border-primary/40 has-data-[checked]:border-primary has-data-[checked]:ring-primary/20 flex cursor-pointer items-start gap-3 rounded-md border p-3 font-normal has-data-[checked]:ring-2'
+                          >
+                            <RadioGroupItem
+                              id={`quota-mode-${option.value}`}
+                              value={option.value}
+                              className='mt-0.5'
+                            />
+                            <span className='flex min-w-0 flex-col gap-0.5'>
+                              <span className='text-sm leading-5 font-medium'>
+                                {option.title}
+                              </span>
+                              <span className='text-muted-foreground text-xs'>
+                                {option.description}
+                              </span>
+                            </span>
+                          </Label>
+                        ))}
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {quotaMode === 'period' && (
+                <FormField
+                  control={form.control}
+                  name='quota_period'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Reset period')}</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          className='flex gap-4'
+                        >
+                          <div className='flex items-center gap-2'>
+                            <RadioGroupItem value='day' id='quota-period-day' />
+                            <Label
+                              htmlFor='quota-period-day'
+                              className='cursor-pointer font-normal'
+                            >
+                              {t('Daily')}
+                            </Label>
+                          </div>
+                          <div className='flex items-center gap-2'>
+                            <RadioGroupItem
+                              value='month'
+                              id='quota-period-month'
+                            />
+                            <Label
+                              htmlFor='quota-period-month'
+                              className='cursor-pointer font-normal'
+                            >
+                              {t('Monthly')}
+                            </Label>
+                          </div>
+                        </RadioGroup>
+                      </FormControl>
+                      <FormDescription>
+                        {quotaPeriod === 'month'
+                          ? t('Resets on the first day of each month')
+                          : t('Resets at local midnight each day')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {showQuotaAmount && (
                 <FormField
                   control={form.control}
                   name='remain_quota_dollars'
@@ -643,29 +760,6 @@ export function ApiKeysMutateDrawer({
                   )}
                 />
               )}
-
-              <FormField
-                control={form.control}
-                name='unlimited_quota'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-sm'>
-                        {t('Unlimited Quota')}
-                      </FormLabel>
-                      <FormDescription className='text-xs'>
-                        {t('Enable unlimited quota for this API key')}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
             </SideDrawerSection>
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

@@ -24,6 +24,15 @@ import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 import { DEFAULT_GROUP } from '../constants'
 import type { ApiKey, ApiKeyFormData } from '../types'
 
+export type ApiKeyQuotaMode = 'unlimited' | 'total' | 'period'
+export type ApiKeyQuotaPeriod = 'day' | 'month'
+
+function isQuotaPeriod(
+  value: string | null | undefined
+): value is ApiKeyQuotaPeriod {
+  return value === 'day' || value === 'month'
+}
+
 // ============================================================================
 // Form Schema
 // ============================================================================
@@ -37,7 +46,8 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
       name: z.string().min(1, t('Please enter a name')),
       remain_quota_dollars: z.number().optional(),
       expired_time: z.date().optional(),
-      unlimited_quota: z.boolean(),
+      quota_mode: z.enum(['unlimited', 'total', 'period']),
+      quota_period: z.enum(['day', 'month']),
       model_limits: z.array(z.string()),
       allow_ips: z.string().optional(),
       group: z.string().optional(),
@@ -80,7 +90,7 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
         }
       }
 
-      if (data.unlimited_quota) {
+      if (data.quota_mode === 'unlimited') {
         return
       }
 
@@ -92,6 +102,15 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
           code: 'custom',
           path: ['remain_quota_dollars'],
           message: t('Quota must be zero or greater'),
+        })
+        return
+      }
+
+      if (data.quota_mode === 'period' && data.remain_quota_dollars <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['remain_quota_dollars'],
+          message: t('Quota must be greater than zero'),
         })
       }
     })
@@ -107,7 +126,8 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   name: '',
   remain_quota_dollars: 10,
   expired_time: undefined,
-  unlimited_quota: true,
+  quota_mode: 'unlimited',
+  quota_period: 'day',
   model_limits: [],
   allow_ips: '',
   group: DEFAULT_GROUP,
@@ -139,15 +159,22 @@ export function getApiKeyFormDefaultValues(
 export function transformFormDataToPayload(
   data: ApiKeyFormValues
 ): ApiKeyFormData {
+  const unlimitedQuota = data.quota_mode === 'unlimited'
+  const periodQuota =
+    data.quota_mode === 'period'
+      ? parseQuotaFromDollars(data.remain_quota_dollars || 0)
+      : 0
   return {
     name: data.name,
-    remain_quota: data.unlimited_quota
+    remain_quota: unlimitedQuota
       ? 0
       : parseQuotaFromDollars(data.remain_quota_dollars || 0),
     expired_time: data.expired_time
       ? Math.floor(data.expired_time.getTime() / 1000)
       : -1,
-    unlimited_quota: data.unlimited_quota,
+    unlimited_quota: unlimitedQuota,
+    quota_period: data.quota_mode === 'period' ? data.quota_period : '',
+    period_quota: periodQuota,
     model_limits_enabled: data.model_limits.length > 0,
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
@@ -174,17 +201,30 @@ export function transformApiKeyToFormDefaults(
     .filter((group) => availableSet.has(group))
     .slice(0, Math.max(0, maxAutoGroups))
   const autoGroupsMode = storedAutoGroups.length > 0 ? 'custom' : 'inherit'
+  const quotaPeriod = isQuotaPeriod(apiKey.quota_period)
+    ? apiKey.quota_period
+    : 'day'
+  let quotaMode: ApiKeyQuotaMode = 'total'
+  if (apiKey.unlimited_quota) {
+    quotaMode = 'unlimited'
+  } else if (isQuotaPeriod(apiKey.quota_period)) {
+    quotaMode = 'period'
+  }
+  const quotaAmount =
+    quotaMode === 'period'
+      ? apiKey.period_quota || apiKey.remain_quota
+      : apiKey.remain_quota
 
   return {
     name: apiKey.name,
-    remain_quota_dollars: apiKey.unlimited_quota
-      ? 0
-      : quotaUnitsToDollars(apiKey.remain_quota),
+    remain_quota_dollars:
+      quotaMode === 'unlimited' ? 0 : quotaUnitsToDollars(quotaAmount),
     expired_time:
       apiKey.expired_time > 0
         ? new Date(apiKey.expired_time * 1000)
         : undefined,
-    unlimited_quota: apiKey.unlimited_quota,
+    quota_mode: quotaMode,
+    quota_period: quotaPeriod,
     model_limits: apiKey.model_limits
       ? apiKey.model_limits.split(',').filter(Boolean)
       : [],

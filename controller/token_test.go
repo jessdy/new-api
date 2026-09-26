@@ -351,6 +351,11 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if !db.Migrator().HasColumn(&model.Token{}, "auto_groups") {
 		t.Fatal("expected migration to add auto_groups column")
 	}
+	for _, column := range []string{"quota_period", "period_quota", "period_reset_at"} {
+		if !db.Migrator().HasColumn(&model.Token{}, column) {
+			t.Fatalf("expected migration to add %s column", column)
+		}
+	}
 	if got := getTokenAutoGroupsColumnType(t, db, dialect); got != "text" {
 		t.Fatalf("expected migrated auto_groups column type text, got %q", got)
 	}
@@ -367,6 +372,10 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	}
 	if migratedToken.AutoGroups != "" {
 		t.Fatalf("expected legacy token to inherit global Auto groups, got %q", migratedToken.AutoGroups)
+	}
+	if migratedToken.QuotaPeriod != "" || migratedToken.PeriodQuota != 0 || migratedToken.PeriodResetAt != 0 {
+		t.Fatalf("expected legacy token period quota fields to stay empty, got period=%q quota=%d reset_at=%d",
+			migratedToken.QuotaPeriod, migratedToken.PeriodQuota, migratedToken.PeriodResetAt)
 	}
 
 	inserted := model.Token{

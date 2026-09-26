@@ -210,6 +210,9 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 	if unlimited {
 		return true, DecreaseTokenQuota(id, key, quota)
 	}
+	if err := EnsureTokenPeriodQuota(id, key); err != nil {
+		return false, err
+	}
 	if !common.RedisEnabled {
 		return reserveTokenQuotaDB(id, quota)
 	}
