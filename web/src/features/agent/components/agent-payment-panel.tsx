@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AmountDiscountVisualEditor } from '@/features/system-settings/integrations/amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from '@/features/system-settings/integrations/amount-options-visual-editor'
@@ -125,6 +126,11 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
   const [stripeUnitPrice, setStripeUnitPrice] = useState('1')
   const [stripeMinTopUp, setStripeMinTopUp] = useState('1')
   const [stripePromo, setStripePromo] = useState(false)
+  const [alipayEnabled, setAlipayEnabled] = useState(false)
+  const [alipayAppId, setAlipayAppId] = useState('')
+  const [alipayPrivateKey, setAlipayPrivateKey] = useState('')
+  const [alipayPublicKey, setAlipayPublicKey] = useState('')
+  const [alipaySandbox, setAlipaySandbox] = useState(false)
 
   useEffect(() => {
     const data = paymentQuery.data
@@ -150,6 +156,11 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
     setStripeUnitPrice(String(data.stripe_unit_price || 1))
     setStripeMinTopUp(String(data.stripe_min_topup || 1))
     setStripePromo(Boolean(data.stripe_promotion_codes_enabled))
+    setAlipayEnabled(Boolean(data.alipay_enabled))
+    setAlipayAppId(data.alipay_app_id || '')
+    setAlipayPrivateKey('')
+    setAlipayPublicKey('')
+    setAlipaySandbox(Boolean(data.alipay_sandbox))
   }
 
   const saveMutation = useMutation({
@@ -177,6 +188,15 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
           stripe_unit_price: Number(stripeUnitPrice) || 0,
           stripe_min_topup: Number(stripeMinTopUp) || 0,
           stripe_promotion_codes_enabled: stripePromo,
+          alipay_enabled: alipayEnabled,
+          alipay_app_id: alipayAppId.trim(),
+          ...(alipayPrivateKey.trim()
+            ? { alipay_private_key: alipayPrivateKey.trim() }
+            : {}),
+          ...(alipayPublicKey.trim()
+            ? { alipay_public_key: alipayPublicKey.trim() }
+            : {}),
+          alipay_sandbox: alipaySandbox,
         },
         props.agentId
       ),
@@ -192,6 +212,8 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
   const stripeWebhookUrl = webhookAgentId
     ? `${window.location.origin}/api/stripe/webhook/${webhookAgentId}`
     : `${window.location.origin}/api/stripe/webhook/{agent_id}`
+  const alipayNotifyBase = customCallback.trim() || window.location.origin
+  const alipayNotifyUrl = `${alipayNotifyBase.replace(/\/$/, '')}/api/alipay/notify`
 
   return (
     <div className='space-y-4'>
@@ -205,6 +227,7 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
         <TabsList>
           <TabsTrigger value='general'>{t('General')}</TabsTrigger>
           <TabsTrigger value='epay'>{t('Epay')}</TabsTrigger>
+          <TabsTrigger value='alipay'>{t('Alipay')}</TabsTrigger>
           <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
         </TabsList>
 
@@ -295,6 +318,73 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
               value={payMethods}
               onChange={setPayMethods}
             />
+          </div>
+        </TabsContent>
+
+        <TabsContent value='alipay' className='mt-4 space-y-4'>
+          <div className='flex items-center justify-between rounded-md border p-3'>
+            <div>
+              <div className='font-medium'>{t('Enable official Alipay')}</div>
+              <div className='text-muted-foreground text-sm'>
+                {t('Accept payments through Alipay Open Platform.')}
+              </div>
+            </div>
+            <Switch
+              checked={alipayEnabled}
+              onCheckedChange={setAlipayEnabled}
+            />
+          </div>
+          <div className='grid max-w-xl gap-3'>
+            <Label>{t('Alipay App ID')}</Label>
+            <Input
+              value={alipayAppId}
+              onChange={(e) => setAlipayAppId(e.target.value)}
+              placeholder='2021...'
+              autoComplete='off'
+            />
+            <Label>{t('Alipay application private key')}</Label>
+            <Textarea
+              value={alipayPrivateKey}
+              onChange={(e) => setAlipayPrivateKey(e.target.value)}
+              placeholder={
+                paymentQuery.data?.alipay_private_key_set
+                  ? t('Leave empty to keep current key')
+                  : '-----BEGIN PRIVATE KEY-----'
+              }
+              className='font-mono text-xs'
+              autoComplete='off'
+            />
+            <Label>{t('Alipay public key')}</Label>
+            <Textarea
+              value={alipayPublicKey}
+              onChange={(e) => setAlipayPublicKey(e.target.value)}
+              placeholder={
+                paymentQuery.data?.alipay_public_key_set
+                  ? t('Leave empty to keep current key')
+                  : '-----BEGIN PUBLIC KEY-----'
+              }
+              className='font-mono text-xs'
+              autoComplete='off'
+            />
+            <Label>{t('Alipay notify URL')}</Label>
+            <Input readOnly value={alipayNotifyUrl} />
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Configure this URL as the Alipay async notification address.'
+              )}
+            </p>
+            <div className='flex items-center justify-between rounded-md border p-3'>
+              <div>
+                <div className='font-medium'>{t('Use Alipay sandbox')}</div>
+                <div className='text-muted-foreground text-sm'>
+                  {t('Use the Alipay sandbox gateway for testing.')}
+                </div>
+              </div>
+              <Switch
+                checked={alipaySandbox}
+                onCheckedChange={setAlipaySandbox}
+              />
+            </div>
           </div>
         </TabsContent>
 

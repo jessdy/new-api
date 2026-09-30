@@ -28,6 +28,12 @@ type resolvedStripeGateway struct {
 	AgentId               int
 }
 
+type resolvedAlipayGateway struct {
+	Client  *service.AlipayClient
+	Enabled bool
+	AgentId int
+}
+
 type resolvedAgentTopUpPricing struct {
 	Price          float64
 	MinTopUp       int
@@ -246,6 +252,43 @@ func resolveStripeGatewayForAgent(agentId int) (*resolvedStripeGateway, error) {
 		Enabled:               cfg.StripeEnabled && cfg.StripeApiSecret != "" && cfg.StripeWebhookSecret != "",
 		AgentId:               agentId,
 	}, nil
+}
+
+func resolveAlipayGatewayForUser(userId int) (*resolvedAlipayGateway, error) {
+	agentId := resolveUserAgentId(userId)
+	if agentId <= 0 {
+		return &resolvedAlipayGateway{Enabled: false}, nil
+	}
+	return resolveAlipayGatewayForAgent(agentId)
+}
+
+func resolveAlipayGatewayForAgent(agentId int) (*resolvedAlipayGateway, error) {
+	if agentId <= 0 {
+		return &resolvedAlipayGateway{Enabled: false}, nil
+	}
+	agent, err := model.GetAgentById(agentId)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := agent.GetPaymentConfig()
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.AlipayConfigured() {
+		return &resolvedAlipayGateway{Enabled: false, AgentId: agentId}, nil
+	}
+	client, err := service.NewAlipayClient(cfg.AlipayAppId, cfg.AlipayPrivateKey, cfg.AlipayPublicKey, cfg.AlipaySandbox)
+	if err != nil {
+		return nil, err
+	}
+	return &resolvedAlipayGateway{Client: client, Enabled: true, AgentId: agentId}, nil
+}
+
+func resolveAlipayGatewayForTopUp(topUp *model.TopUp) (*resolvedAlipayGateway, error) {
+	if topUp == nil {
+		return nil, nil
+	}
+	return resolveAlipayGatewayForAgent(topUp.AgentId)
 }
 
 func getPayMoneyForUser(userId int, amount int64, group string) float64 {

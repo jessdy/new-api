@@ -75,6 +75,10 @@ export function isStripePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.STRIPE
 }
 
+export function isAlipayNativePayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ALIPAY_NATIVE
+}
+
 /**
  * Check if payment method is Waffo
  */

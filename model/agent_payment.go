@@ -30,6 +30,12 @@ type AgentPaymentConfig struct {
 	StripeUnitPrice             float64 `json:"stripe_unit_price"`
 	StripeMinTopUp              int     `json:"stripe_min_topup"`
 	StripePromotionCodesEnabled bool    `json:"stripe_promotion_codes_enabled"`
+
+	AlipayEnabled    bool   `json:"alipay_enabled"`
+	AlipayAppId      string `json:"alipay_app_id"`
+	AlipayPrivateKey string `json:"alipay_private_key"`
+	AlipayPublicKey  string `json:"alipay_public_key"`
+	AlipaySandbox    bool   `json:"alipay_sandbox"`
 }
 
 func (a *Agent) GetPaymentConfig() (AgentPaymentConfig, error) {
@@ -116,7 +122,19 @@ func (cfg AgentPaymentConfig) PublicView() map[string]any {
 		"stripe_unit_price":              cfg.StripeUnitPrice,
 		"stripe_min_topup":               cfg.StripeMinTopUp,
 		"stripe_promotion_codes_enabled": cfg.StripePromotionCodesEnabled,
+		"alipay_enabled":                 cfg.AlipayEnabled,
+		"alipay_app_id":                  cfg.AlipayAppId,
+		"alipay_private_key_set":         cfg.AlipayPrivateKey != "",
+		"alipay_public_key_set":          cfg.AlipayPublicKey != "",
+		"alipay_sandbox":                 cfg.AlipaySandbox,
 	}
+}
+
+func (cfg AgentPaymentConfig) AlipayConfigured() bool {
+	return cfg.AlipayEnabled &&
+		strings.TrimSpace(cfg.AlipayAppId) != "" &&
+		strings.TrimSpace(cfg.AlipayPrivateKey) != "" &&
+		strings.TrimSpace(cfg.AlipayPublicKey) != ""
 }
 
 func maskSecret(value string) string {

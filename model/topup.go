@@ -31,6 +31,7 @@ const (
 	PaymentMethodCreem        = "creem"
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
+	PaymentMethodAlipayNative = "alipay_native"
 	PaymentMethodBalance      = "balance"
 )
 
@@ -40,6 +41,7 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderAlipay       = "alipay"
 	PaymentProviderBalance      = "balance"
 )
 
@@ -175,6 +177,14 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 // alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
 // 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
 func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+	return rechargeOnlineTopUp(tradeNo, PaymentProviderEpay, actualPaymentMethod, callerIp, "epay", "易支付充值成功")
+}
+
+func RechargeAlipay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+	return rechargeOnlineTopUp(tradeNo, PaymentProviderAlipay, actualPaymentMethod, callerIp, "alipay", "支付宝充值成功")
+}
+
+func rechargeOnlineTopUp(tradeNo string, expectedProvider string, actualPaymentMethod string, callerIp string, cacheLabel string, successLogPrefix string) (alreadyDone bool, err error) {
 	if tradeNo == "" {
 		return false, errors.New("未提供支付单号")
 	}
@@ -190,7 +200,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
-		if topUp.PaymentProvider != PaymentProviderEpay {
+		if topUp.PaymentProvider != expectedProvider {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -219,17 +229,17 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
-			common.SysError("epay topup failed: " + err.Error())
+			common.SysError(cacheLabel + " topup failed: " + err.Error())
 		}
 		return false, err
 	}
 	if alreadyDone {
 		return true, nil
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "epay topup")
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, cacheLabel+" topup")
 
-	common.SysLog(fmt.Sprintf("易支付充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentProviderEpay)
+	common.SysLog(fmt.Sprintf("%s trade_no=%s user_id=%d quota_to_add=%d money=%.2f", successLogPrefix, topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, expectedProvider)
 	return false, nil
 }
 

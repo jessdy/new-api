@@ -57,6 +57,23 @@ func GetTopUpInfo(c *gin.Context) {
 						stripeMinTopUp = cfg.StripeMinTopUp
 					}
 				}
+				if complianceConfirmed && cfg.AlipayConfigured() {
+					enableOnlineTopup = true
+					hasNativeAlipay := false
+					for _, method := range payMethods {
+						if method["type"] == model.PaymentMethodAlipayNative {
+							hasNativeAlipay = true
+							break
+						}
+					}
+					if !hasNativeAlipay {
+						payMethods = append(payMethods, map[string]string{
+							"name":  "Alipay",
+							"type":  model.PaymentMethodAlipayNative,
+							"color": "#1677FF",
+						})
+					}
+				}
 			}
 		}
 	} else {
@@ -302,6 +319,10 @@ func RequestEpay(c *gin.Context) {
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if req.PaymentMethod == model.PaymentMethodAlipayNative {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
 	id := c.GetInt("id")

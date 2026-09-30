@@ -643,10 +643,15 @@ func TestAgentPaymentConfigRoundTrip(t *testing.T) {
 	}
 	require.NoError(t, CreateAgent(agent))
 	require.NoError(t, agent.SetPaymentConfig(AgentPaymentConfig{
-		EpayEnabled: true,
-		PayAddress:  "https://pay.example.com",
-		EpayId:      "pid",
-		EpayKey:     "secret-key",
+		EpayEnabled:      true,
+		PayAddress:       "https://pay.example.com",
+		EpayId:           "pid",
+		EpayKey:          "secret-key",
+		AlipayEnabled:    true,
+		AlipayAppId:      "2021000000000000",
+		AlipayPrivateKey: "alipay-private-key",
+		AlipayPublicKey:  "alipay-public-key",
+		AlipaySandbox:    true,
 	}))
 	loaded, err := GetAgentById(agent.Id)
 	require.NoError(t, err)
@@ -654,9 +659,19 @@ func TestAgentPaymentConfigRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.EpayEnabled)
 	assert.Equal(t, "secret-key", cfg.EpayKey)
+	assert.True(t, cfg.AlipayConfigured())
+	assert.Equal(t, "2021000000000000", cfg.AlipayAppId)
+	assert.Equal(t, "alipay-private-key", cfg.AlipayPrivateKey)
 	view := cfg.PublicView()
 	assert.Equal(t, true, view["epay_key_set"])
 	assert.NotContains(t, view, "epay_key")
+	assert.Equal(t, true, view["alipay_enabled"])
+	assert.Equal(t, "2021000000000000", view["alipay_app_id"])
+	assert.Equal(t, true, view["alipay_private_key_set"])
+	assert.Equal(t, true, view["alipay_public_key_set"])
+	assert.Equal(t, true, view["alipay_sandbox"])
+	assert.NotContains(t, view, "alipay_private_key")
+	assert.NotContains(t, view, "alipay_public_key")
 }
 
 func TestReplaceAgentGroupPricingBecomesUserPricing(t *testing.T) {

@@ -141,6 +141,11 @@ export type AgentPaymentConfigView = {
   stripe_unit_price: number
   stripe_min_topup: number
   stripe_promotion_codes_enabled: boolean
+  alipay_enabled: boolean
+  alipay_app_id: string
+  alipay_private_key_set: boolean
+  alipay_public_key_set: boolean
+  alipay_sandbox: boolean
 }
 
 export async function getAgentSelf(agentId?: number): Promise<AgentSummary> {

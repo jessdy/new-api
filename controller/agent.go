@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -549,6 +550,33 @@ func AgentUpdatePaymentConfig(c *gin.Context) {
 	}
 	if v, ok := patch["stripe_promotion_codes_enabled"].(bool); ok {
 		merged.StripePromotionCodesEnabled = v
+	}
+	if v, ok := patch["alipay_enabled"].(bool); ok {
+		merged.AlipayEnabled = v
+	}
+	if v, ok := patch["alipay_app_id"].(string); ok {
+		merged.AlipayAppId = strings.TrimSpace(v)
+	}
+	if v, ok := patch["alipay_private_key"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" && !strings.Contains(v, "*") {
+			merged.AlipayPrivateKey = v
+		}
+	}
+	if v, ok := patch["alipay_public_key"].(string); ok {
+		v = strings.TrimSpace(v)
+		if v != "" && !strings.Contains(v, "*") {
+			merged.AlipayPublicKey = v
+		}
+	}
+	if v, ok := patch["alipay_sandbox"].(bool); ok {
+		merged.AlipaySandbox = v
+	}
+	if merged.AlipayConfigured() {
+		if _, err := service.NewAlipayClient(merged.AlipayAppId, merged.AlipayPrivateKey, merged.AlipayPublicKey, merged.AlipaySandbox); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "Invalid Alipay keys"})
+			return
+		}
 	}
 
 	if err := agent.SetPaymentConfig(merged); err != nil {
