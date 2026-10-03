@@ -44,9 +44,12 @@ type AlipayPagePayRequest struct {
 }
 
 func NewAlipayClient(appId, privateKeyPEM, publicKeyPEM string, sandbox bool) (*AlipayClient, error) {
-	appId = strings.TrimSpace(appId)
+	appId = normalizeAlipayAppId(appId)
 	if appId == "" {
 		return nil, errors.New("alipay app id is required")
+	}
+	if !isAlipayAppId(appId) {
+		return nil, fmt.Errorf("alipay app id is invalid: %q", appId)
 	}
 	privateKey, err := ParseRSAPrivateKey(privateKeyPEM)
 	if err != nil {
@@ -111,7 +114,32 @@ func (c *AlipayClient) BuildPagePay(req AlipayPagePayRequest) (string, map[strin
 		return "", nil, err
 	}
 	params["sign"] = sign
-	return c.Gateway(), params, nil
+	// Official page/wap pay posts to gateway.do?charset=utf-8. Posting to the
+	// bare gateway omits the charset hint and Alipay reports invalid-app-id.
+	return c.Gateway() + "?charset=" + url.QueryEscape("utf-8"), params, nil
+}
+
+func normalizeAlipayAppId(raw string) string {
+	raw = strings.TrimSpace(strings.Trim(raw, "\"'"))
+	raw = strings.TrimPrefix(raw, "\ufeff")
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\t' || r == '\r' {
+			return -1
+		}
+		return r
+	}, raw)
+}
+
+func isAlipayAppId(appId string) bool {
+	if len(appId) < 8 || len(appId) > 32 {
+		return false
+	}
+	for _, r := range appId {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *AlipayClient) VerifyNotification(params map[string]string) error {

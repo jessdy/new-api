@@ -109,7 +109,20 @@ func RequestAlipayPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("支付宝 充值订单创建成功 user_id=%d trade_no=%s amount=%d money=%.2f", id, tradeNo, req.Amount, payMoney))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf(
+		"支付宝 充值订单创建成功 user_id=%d agent_id=%d trade_no=%s amount=%d money=%.2f app_id=%s sandbox=%t method=%s gateway=%q notify_url=%q return_url=%q",
+		id,
+		gateway.AgentId,
+		tradeNo,
+		req.Amount,
+		payMoney,
+		params["app_id"],
+		gateway.Client.Sandbox,
+		params["method"],
+		uri,
+		notifyURL,
+		returnURL,
+	))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 

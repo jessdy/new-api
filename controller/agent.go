@@ -574,7 +574,7 @@ func AgentUpdatePaymentConfig(c *gin.Context) {
 	}
 	if merged.AlipayConfigured() {
 		if _, err := service.NewAlipayClient(merged.AlipayAppId, merged.AlipayPrivateKey, merged.AlipayPublicKey, merged.AlipaySandbox); err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "message": "Invalid Alipay keys"})
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 			return
 		}
 	}

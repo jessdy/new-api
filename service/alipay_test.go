@@ -34,7 +34,9 @@ func TestAlipaySignAndVerifyRoundTrip(t *testing.T) {
 		ReturnURL:   "https://example.com/wallet?pay=success",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, AlipayGatewaySandbox, uri)
+	assert.Equal(t, AlipayGatewaySandbox+"?charset=utf-8", uri)
+	assert.Equal(t, "2021000000000001", params["app_id"])
+	assert.Equal(t, "utf-8", params["charset"])
 	assert.Equal(t, "alipay.trade.page.pay", params["method"])
 	assert.NotEmpty(t, params["sign"])
 	require.NoError(t, client.VerifyNotification(params))
@@ -52,4 +54,12 @@ func TestAlipayNotifyGuards(t *testing.T) {
 
 	_, err := NewAlipayClient("", "x", "y", false)
 	assert.Error(t, err)
+	_, err = NewAlipayClient("not-an-app-id", "x", "y", false)
+	assert.Error(t, err)
+}
+
+func TestNormalizeAlipayAppId(t *testing.T) {
+	assert.Equal(t, "2021000000000001", normalizeAlipayAppId("  \"2021000000000001\" \n"))
+	assert.True(t, isAlipayAppId("2021000000000001"))
+	assert.False(t, isAlipayAppId("app_2021"))
 }
