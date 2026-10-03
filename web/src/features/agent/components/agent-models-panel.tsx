@@ -106,7 +106,9 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
     return items.filter(
       (item) =>
         item.model_name.toLowerCase().includes(q) ||
-        item.channel_names.some((name) => name.toLowerCase().includes(q))
+        (item.channel_names ?? []).some((name) =>
+          name.toLowerCase().includes(q)
+        )
     )
   }, [filter, modelsQuery.data])
 
@@ -142,18 +144,21 @@ export function AgentModelsPanel(props: AgentModelsPanelProps) {
       {
         id: 'channels',
         header: t('Channels'),
-        cell: (row) =>
-          row.channel_names.length === 0 ? (
-            <span className='text-muted-foreground text-sm'>—</span>
-          ) : (
+        cell: (row) => {
+          const channelNames = row.channel_names ?? []
+          if (channelNames.length === 0) {
+            return <span className='text-muted-foreground text-sm'>—</span>
+          }
+          return (
             <div className='flex flex-wrap gap-1'>
-              {row.channel_names.map((name) => (
+              {channelNames.map((name) => (
                 <Badge key={`${row.model_name}-${name}`} variant='secondary'>
                   {name}
                 </Badge>
               ))}
             </div>
-          ),
+          )
+        },
       },
       {
         id: 'cost',

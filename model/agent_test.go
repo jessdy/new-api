@@ -762,6 +762,10 @@ func TestListAgentModelsMergesChannelsAndCost(t *testing.T) {
 	assert.ElementsMatch(t, []string{"east", "west"}, byName["gpt-4"].ChannelNames)
 	assert.False(t, byName["claude-3"].HasCostOverride)
 	assert.Equal(t, 1.1, byName["legacy-only"].CostEffective["ModelPrice"])
+	require.NotNil(t, byName["legacy-only"].ChannelIds)
+	require.NotNil(t, byName["legacy-only"].ChannelNames)
+	assert.Empty(t, byName["legacy-only"].ChannelIds)
+	assert.Empty(t, byName["legacy-only"].ChannelNames)
 }
 
 func TestReplaceAgentUserModelSettings(t *testing.T) {

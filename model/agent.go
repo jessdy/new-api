@@ -782,10 +782,18 @@ func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
 	items := make([]AgentModelListItem, 0, len(names))
 	for _, name := range names {
 		agg := byModel[name]
+		channelIds := agg.channelIds
+		if channelIds == nil {
+			channelIds = []int{}
+		}
+		channelNames := agg.channelNames
+		if channelNames == nil {
+			channelNames = []string{}
+		}
 		item := AgentModelListItem{
 			ModelName:     name,
-			ChannelIds:    agg.channelIds,
-			ChannelNames:  agg.channelNames,
+			ChannelIds:    channelIds,
+			ChannelNames:  channelNames,
 			DiscountRatio: 1,
 			CostEffective: effectiveByName[name],
 			CostVersion:   ModelPricingVersion(PricingValues{}),

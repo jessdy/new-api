@@ -83,8 +83,8 @@ export type AgentModelPrice = {
 
 export type AgentModelListItem = {
   model_name: string
-  channel_ids: number[]
-  channel_names: string[]
+  channel_ids?: number[] | null
+  channel_names?: string[] | null
   discount_ratio: number
   cost_configured?: Record<string, number | string>
   cost_effective?: Record<string, number | string>
