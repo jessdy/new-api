@@ -164,7 +164,7 @@ func SignAlipayParams(params map[string]string, key *rsa.PrivateKey) (string, er
 	if key == nil {
 		return "", errors.New("alipay private key is required")
 	}
-	hashed := sha256.Sum256([]byte(alipaySignContent(params)))
+	hashed := sha256.Sum256([]byte(alipayJoinParams(params, false)))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hashed[:])
 	if err != nil {
 		return "", err
@@ -173,6 +173,10 @@ func SignAlipayParams(params map[string]string, key *rsa.PrivateKey) (string, er
 }
 
 func VerifyAlipayParams(params map[string]string, key *rsa.PublicKey) error {
+	return verifyAlipaySignature(params, key, true)
+}
+
+func verifyAlipaySignature(params map[string]string, key *rsa.PublicKey, skipSignType bool) error {
 	if key == nil {
 		return errors.New("alipay public key is required")
 	}
@@ -184,14 +188,17 @@ func VerifyAlipayParams(params map[string]string, key *rsa.PublicKey) error {
 	if err != nil {
 		return err
 	}
-	hashed := sha256.Sum256([]byte(alipaySignContent(params)))
+	hashed := sha256.Sum256([]byte(alipayJoinParams(params, skipSignType)))
 	return rsa.VerifyPKCS1v15(key, crypto.SHA256, hashed[:], raw)
 }
 
-func alipaySignContent(params map[string]string) string {
+func alipayJoinParams(params map[string]string, skipSignType bool) string {
 	keys := make([]string, 0, len(params))
 	for key, value := range params {
-		if key == "sign" || key == "sign_type" || value == "" {
+		if key == "sign" || value == "" {
+			continue
+		}
+		if skipSignType && key == "sign_type" {
 			continue
 		}
 		keys = append(keys, key)

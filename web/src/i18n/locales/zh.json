@@ -3960,6 +3960,8 @@
     "Passwords don't match.": "两次输入的密码不一致。",
     "Paste Connection Info": "粘贴连接信息",
     "Paste JavaScript source here...": "在此粘贴 JavaScript 源码...",
+    "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.": "填写上传应用公钥后支付宝下发的「支付宝公钥」，不要填写应用公钥。",
+    "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.": "填写开放平台「应用私钥」。Java（PKCS8）与非 Java（PKCS1）均可。请把对应的「应用公钥」上传到支付宝控制台，不要把应用公钥填到本页。",
     "Path": "路径",
     "Path not set": "未设置路径",
     "Path Regex (one per line)": "路径正则（每行一个）",

@@ -3960,6 +3960,8 @@
     "Passwords don't match.": "パスワードが一致しません。",
     "Paste Connection Info": "接続情報を貼り付け",
     "Paste JavaScript source here...": "JavaScript ソースを貼り付け...",
+    "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.": "アプリ公開鍵をアップロードしたあとに発行されるAlipay公開鍵を入力してください。アプリ公開鍵は貼らないでください。",
+    "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.": "オープンプラットフォームのアプリ秘密鍵を入力します。Java（PKCS8）と非Java（PKCS1）の両方に対応します。対応するアプリ公開鍵はAlipayコンソールにアップロードし、ここに貼らないでください。",
     "Path": "パス",
     "Path not set": "パス未設定",
     "Path Regex (one per line)": "パス正規表現（1行に1つ）",

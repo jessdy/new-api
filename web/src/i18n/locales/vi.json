@@ -3960,6 +3960,8 @@
     "Passwords don't match.": "Mật khẩu không khớp.",
     "Paste Connection Info": "Dán thông tin kết nối",
     "Paste JavaScript source here...": "Dán mã nguồn JavaScript tại đây...",
+    "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.": "Dán khóa công khai Alipay được cấp sau khi tải khóa công khai ứng dụng. Không dán khóa công khai ứng dụng.",
+    "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.": "Dán khóa riêng ứng dụng từ Alipay Open Platform. Hỗ trợ cả Java (PKCS8) và không Java (PKCS1). Tải khóa công khai ứng dụng tương ứng lên bảng điều khiển Alipay; không dán khóa đó vào đây.",
     "Path": "Đường dẫn",
     "Path not set": "Chưa đặt đường dẫn",
     "Path Regex (one per line)": "Regex đường dẫn (mỗi dòng một mục)",

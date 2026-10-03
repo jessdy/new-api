@@ -39,10 +39,31 @@ func TestAlipaySignAndVerifyRoundTrip(t *testing.T) {
 	assert.Equal(t, "utf-8", params["charset"])
 	assert.Equal(t, "alipay.trade.page.pay", params["method"])
 	assert.NotEmpty(t, params["sign"])
-	require.NoError(t, client.VerifyNotification(params))
+	require.NoError(t, verifyAlipaySignature(params, client.PublicKey, false))
 
 	params["sign"] = "invalid"
-	assert.Error(t, client.VerifyNotification(params))
+	assert.Error(t, verifyAlipaySignature(params, client.PublicKey, false))
+}
+
+func TestAlipayRequestSignContentMatchesGateway(t *testing.T) {
+	params := map[string]string{
+		"app_id":      "9021000168694495",
+		"biz_content": `{"out_trade_no":"USR4NOC5wNqC1791043102","product_code":"FAST_INSTANT_TRADE_PAY","subject":"TUC10","total_amount":"10.00"}`,
+		"charset":     "utf-8",
+		"format":      "JSON",
+		"method":      "alipay.trade.page.pay",
+		"notify_url":  "https://xtfac.com/api/alipay/notify",
+		"return_url":  "https://xtfac.com/wallet?pay=success",
+		"sign_type":   "RSA2",
+		"timestamp":   "2026-10-03 23:58:22",
+		"version":     "1.0",
+		"sign":        "ignored",
+	}
+	assert.Equal(t,
+		`app_id=9021000168694495&biz_content={"out_trade_no":"USR4NOC5wNqC1791043102","product_code":"FAST_INSTANT_TRADE_PAY","subject":"TUC10","total_amount":"10.00"}&charset=utf-8&format=JSON&method=alipay.trade.page.pay&notify_url=https://xtfac.com/api/alipay/notify&return_url=https://xtfac.com/wallet?pay=success&sign_type=RSA2&timestamp=2026-10-03 23:58:22&version=1.0`,
+		alipayJoinParams(params, false),
+	)
+	assert.NotContains(t, alipayJoinParams(params, true), "sign_type=")
 }
 
 func TestAlipayNotifyGuards(t *testing.T) {

@@ -3960,6 +3960,8 @@
     "Passwords don't match.": "Пароли не совпадают.",
     "Paste Connection Info": "Вставить данные подключения",
     "Paste JavaScript source here...": "Вставьте исходный код JavaScript...",
+    "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.": "Вставьте открытый ключ Alipay, выданный после загрузки открытого ключа приложения. Не вставляйте открытый ключ приложения.",
+    "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.": "Вставьте закрытый ключ приложения (PKCS8 Java или PKCS1). Соответствующий открытый ключ приложения загрузите в консоль Alipay, не вставляйте его сюда.",
     "Path": "Путь",
     "Path not set": "Путь не задан",
     "Path Regex (one per line)": "Регулярное выражение пути (по одному на строку)",

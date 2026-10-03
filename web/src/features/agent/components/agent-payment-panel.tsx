@@ -343,18 +343,28 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
               autoComplete='off'
             />
             <Label>{t('Alipay application private key')}</Label>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.'
+              )}
+            </p>
             <Textarea
               value={alipayPrivateKey}
               onChange={(e) => setAlipayPrivateKey(e.target.value)}
               placeholder={
                 paymentQuery.data?.alipay_private_key_set
                   ? t('Leave empty to keep current key')
-                  : '-----BEGIN PRIVATE KEY-----'
+                  : '-----BEGIN RSA PRIVATE KEY-----'
               }
               className='font-mono text-xs'
               autoComplete='off'
             />
             <Label>{t('Alipay public key')}</Label>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.'
+              )}
+            </p>
             <Textarea
               value={alipayPublicKey}
               onChange={(e) => setAlipayPublicKey(e.target.value)}

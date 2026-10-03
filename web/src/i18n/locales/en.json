@@ -3960,6 +3960,8 @@
     "Passwords don't match.": "Passwords don't match.",
     "Paste Connection Info": "Paste Connection Info",
     "Paste JavaScript source here...": "Paste JavaScript source here...",
+    "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.": "Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.",
+    "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.": "Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.",
     "Path": "Path",
     "Path not set": "Path not set",
     "Path Regex (one per line)": "Path Regex (one per line)",
