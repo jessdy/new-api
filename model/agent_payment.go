@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -39,20 +40,37 @@ type AgentPaymentConfig struct {
 }
 
 func (a *Agent) GetPaymentConfig() (AgentPaymentConfig, error) {
-	cfg := AgentPaymentConfig{}
+	cfg := emptyAgentPaymentConfig()
 	if a == nil || a.PaymentConfig == "" {
 		return cfg, nil
 	}
 	plain, err := common.DecryptPayload(a.PaymentConfig)
 	if err != nil {
-		return cfg, err
+		if parseAgentPaymentJSON(a.PaymentConfig, &cfg) {
+			return cfg, nil
+		}
+		common.SysError(fmt.Sprintf("agent payment_config decrypt failed agent_id=%d payload_len=%d error=%q", a.Id, len(a.PaymentConfig), err.Error()))
+		return emptyAgentPaymentConfig(), nil
 	}
 	if plain == "" {
 		return cfg, nil
 	}
 	if err := common.Unmarshal([]byte(plain), &cfg); err != nil {
-		return cfg, err
+		return emptyAgentPaymentConfig(), err
 	}
+	normalizeAgentPaymentConfig(&cfg)
+	return cfg, nil
+}
+
+func emptyAgentPaymentConfig() AgentPaymentConfig {
+	return AgentPaymentConfig{
+		AmountOptions:  []int{},
+		AmountDiscount: map[int]float64{},
+		PayMethods:     []map[string]string{},
+	}
+}
+
+func normalizeAgentPaymentConfig(cfg *AgentPaymentConfig) {
 	if cfg.AmountOptions == nil {
 		cfg.AmountOptions = []int{}
 	}
@@ -62,22 +80,25 @@ func (a *Agent) GetPaymentConfig() (AgentPaymentConfig, error) {
 	if cfg.PayMethods == nil {
 		cfg.PayMethods = []map[string]string{}
 	}
-	return cfg, nil
+}
+
+func parseAgentPaymentJSON(raw string, cfg *AgentPaymentConfig) bool {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "{") {
+		return false
+	}
+	if err := common.Unmarshal([]byte(raw), cfg); err != nil {
+		return false
+	}
+	normalizeAgentPaymentConfig(cfg)
+	return true
 }
 
 func (a *Agent) SetPaymentConfig(cfg AgentPaymentConfig) error {
 	if a == nil {
 		return ErrAgentNotFound
 	}
-	if cfg.AmountOptions == nil {
-		cfg.AmountOptions = []int{}
-	}
-	if cfg.AmountDiscount == nil {
-		cfg.AmountDiscount = map[int]float64{}
-	}
-	if cfg.PayMethods == nil {
-		cfg.PayMethods = []map[string]string{}
-	}
+	normalizeAgentPaymentConfig(&cfg)
 	raw, err := common.Marshal(cfg)
 	if err != nil {
 		return err

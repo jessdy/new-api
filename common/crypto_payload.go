@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 )
 
 var (
@@ -43,7 +44,7 @@ func DecryptPayload(ciphertext string) (string, error) {
 	if ciphertext == "" {
 		return "", nil
 	}
-	raw, err := base64.RawStdEncoding.DecodeString(ciphertext)
+	raw, err := decodeCryptoPayload(ciphertext)
 	if err != nil {
 		return "", ErrCryptoPayloadInvalid
 	}
@@ -76,4 +77,16 @@ func normalizeCryptoSecret(secret string) []byte {
 		buf[i] = secret[i%len(secret)]
 	}
 	return buf
+}
+
+func decodeCryptoPayload(ciphertext string) ([]byte, error) {
+	ciphertext = strings.TrimSpace(ciphertext)
+	if ciphertext == "" {
+		return nil, ErrCryptoPayloadInvalid
+	}
+	raw, err := base64.RawStdEncoding.DecodeString(ciphertext)
+	if err == nil {
+		return raw, nil
+	}
+	return base64.StdEncoding.DecodeString(ciphertext)
 }

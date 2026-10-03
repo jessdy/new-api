@@ -674,6 +674,46 @@ func TestAgentPaymentConfigRoundTrip(t *testing.T) {
 	assert.NotContains(t, view, "alipay_public_key")
 }
 
+func TestAgentPaymentConfigRecoversPlaintextAndCorruptBlob(t *testing.T) {
+	previousSecret := common.CryptoSecret
+	common.CryptoSecret = "agent-payment-test-secret-value"
+	t.Cleanup(func() { common.CryptoSecret = previousSecret })
+
+	newAgentTestDB(t)
+	agent := &Agent{
+		UserId:     32,
+		Name:       "pay-legacy",
+		InviteCode: "paylegacy",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	require.NoError(t, UpdateAgentFields(agent.Id, map[string]any{
+		"payment_config": `{"epay_enabled":true,"epay_id":"pid","epay_key":"legacy-key"}`,
+	}))
+	loaded, err := GetAgentById(agent.Id)
+	require.NoError(t, err)
+	cfg, err := loaded.GetPaymentConfig()
+	require.NoError(t, err)
+	assert.True(t, cfg.EpayEnabled)
+	assert.Equal(t, "legacy-key", cfg.EpayKey)
+
+	require.NoError(t, UpdateAgentFields(agent.Id, map[string]any{
+		"payment_config": "%%%not-a-payload%%%",
+	}))
+	loaded, err = GetAgentById(agent.Id)
+	require.NoError(t, err)
+	cfg, err = loaded.GetPaymentConfig()
+	require.NoError(t, err)
+	assert.False(t, cfg.EpayEnabled)
+	assert.Empty(t, cfg.EpayKey)
+	require.NoError(t, loaded.SetPaymentConfig(AgentPaymentConfig{EpayEnabled: true, EpayKey: "fresh"}))
+	reloaded, err := GetAgentById(agent.Id)
+	require.NoError(t, err)
+	cfg, err = reloaded.GetPaymentConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "fresh", cfg.EpayKey)
+}
+
 func TestReplaceAgentGroupPricingBecomesUserPricing(t *testing.T) {
 	newAgentTestDB(t)
 	agent := &Agent{
