@@ -99,7 +99,7 @@ func (c *AlipayClient) BuildPagePay(req AlipayPagePayRequest) (string, map[strin
 		"format":      "JSON",
 		"charset":     "utf-8",
 		"sign_type":   "RSA2",
-		"timestamp":   time.Now().In(time.Local).Format("2006-01-02 15:04:05"),
+		"timestamp":   alipayTimestamp(),
 		"version":     "1.0",
 		"biz_content": string(biz),
 	}
@@ -114,9 +114,20 @@ func (c *AlipayClient) BuildPagePay(req AlipayPagePayRequest) (string, map[strin
 		return "", nil, err
 	}
 	params["sign"] = sign
+	if err := verifyAlipaySignature(params, &c.PrivateKey.PublicKey, false); err != nil {
+		return "", nil, fmt.Errorf("alipay request signature self-check failed: %w", err)
+	}
 	// Official page/wap pay posts to gateway.do?charset=utf-8. Posting to the
 	// bare gateway omits the charset hint and Alipay reports invalid-app-id.
 	return c.Gateway() + "?charset=" + url.QueryEscape("utf-8"), params, nil
+}
+
+func alipayTimestamp() string {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+	return time.Now().In(loc).Format("2006-01-02 15:04:05")
 }
 
 func normalizeAlipayAppId(raw string) string {
@@ -233,6 +244,18 @@ func ParseRSAPrivateKey(raw string) (*rsa.PrivateKey, error) {
 		return nil, errors.New("not an RSA private key")
 	}
 	return key, nil
+}
+
+func EncodeAlipayAppPublicKey(privateKeyPEM string) (string, error) {
+	key, err := ParseRSAPrivateKey(privateKeyPEM)
+	if err != nil {
+		return "", err
+	}
+	der, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(der), nil
 }
 
 func ParseRSAPublicKey(raw string) (*rsa.PublicKey, error) {

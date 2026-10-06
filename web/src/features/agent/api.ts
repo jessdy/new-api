@@ -146,6 +146,7 @@ export type AgentPaymentConfigView = {
   alipay_private_key_set: boolean
   alipay_public_key_set: boolean
   alipay_sandbox: boolean
+  alipay_app_public_key?: string
 }
 
 export async function getAgentSelf(agentId?: number): Promise<AgentSummary> {

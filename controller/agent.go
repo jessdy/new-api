@@ -449,7 +449,7 @@ func AgentGetPaymentConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": cfg.PublicView()})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": agentPaymentPublicView(cfg)})
 }
 
 func AgentUpdatePaymentConfig(c *gin.Context) {
@@ -583,7 +583,15 @@ func AgentUpdatePaymentConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": merged.PublicView()})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": agentPaymentPublicView(merged)})
+}
+
+func agentPaymentPublicView(cfg model.AgentPaymentConfig) map[string]any {
+	view := cfg.PublicView()
+	if appPublic, err := service.EncodeAlipayAppPublicKey(cfg.AlipayPrivateKey); err == nil && appPublic != "" {
+		view["alipay_app_public_key"] = appPublic
+	}
+	return view
 }
 
 func AgentGetSettlementUsage(c *gin.Context) {

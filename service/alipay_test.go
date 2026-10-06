@@ -41,6 +41,12 @@ func TestAlipaySignAndVerifyRoundTrip(t *testing.T) {
 	assert.NotEmpty(t, params["sign"])
 	require.NoError(t, verifyAlipaySignature(params, client.PublicKey, false))
 
+	appPublic, err := EncodeAlipayAppPublicKey(string(privatePEM))
+	require.NoError(t, err)
+	parsedAppPublic, err := ParseRSAPublicKey(appPublic)
+	require.NoError(t, err)
+	require.NoError(t, verifyAlipaySignature(params, parsedAppPublic, false))
+
 	params["sign"] = "invalid"
 	assert.Error(t, verifyAlipaySignature(params, client.PublicKey, false))
 }

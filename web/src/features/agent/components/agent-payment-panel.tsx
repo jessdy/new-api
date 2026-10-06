@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -359,6 +360,27 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
               className='font-mono text-xs'
               autoComplete='off'
             />
+            {paymentQuery.data?.alipay_app_public_key && (
+              <>
+                <div className='flex items-center justify-between gap-2'>
+                  <Label>{t('Alipay application public key')}</Label>
+                  <CopyButton
+                    value={paymentQuery.data.alipay_app_public_key}
+                    tooltip={t('Copy to clipboard')}
+                  />
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Upload this exact application public key in the Alipay Open Platform console for this App ID. Invalid signature usually means the console has a different key.'
+                  )}
+                </p>
+                <Textarea
+                  readOnly
+                  value={paymentQuery.data.alipay_app_public_key}
+                  className='font-mono text-xs'
+                />
+              </>
+            )}
             <Label>{t('Alipay public key')}</Label>
             <p className='text-muted-foreground text-xs'>
               {t(

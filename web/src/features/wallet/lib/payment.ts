@@ -46,8 +46,8 @@ export function submitPaymentForm(
   params: Record<string, unknown>
 ): void {
   const form = document.createElement('form')
-  form.action = url
-  form.method = 'POST'
+  form.setAttribute('method', 'POST')
+  form.setAttribute('action', url)
   form.acceptCharset = 'UTF-8'
 
   // Don't open in new tab for Safari
