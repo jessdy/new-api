@@ -369,6 +369,7 @@
     "Ali": "Alibaba Байлянь",
     "Alipay": "Alipay",
     "Alipay App ID": "App ID Alipay",
+    "Alipay App ID is required. Saving without it disables checkout.": "Требуется Alipay App ID. Сохранение пустого значения отключает оплату.",
     "Alipay application private key": "Закрытый ключ приложения Alipay",
     "Alipay application public key": "Открытый ключ приложения Alipay",
     "Alipay notify URL": "URL уведомления Alipay",

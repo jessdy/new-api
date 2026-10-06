@@ -555,7 +555,10 @@ func AgentUpdatePaymentConfig(c *gin.Context) {
 		merged.AlipayEnabled = v
 	}
 	if v, ok := patch["alipay_app_id"].(string); ok {
-		merged.AlipayAppId = strings.TrimSpace(v)
+		v = strings.TrimSpace(v)
+		if v != "" {
+			merged.AlipayAppId = v
+		}
 	}
 	if v, ok := patch["alipay_private_key"].(string); ok {
 		v = strings.TrimSpace(v)

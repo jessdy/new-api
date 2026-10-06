@@ -190,7 +190,7 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
           stripe_min_topup: Number(stripeMinTopUp) || 0,
           stripe_promotion_codes_enabled: stripePromo,
           alipay_enabled: alipayEnabled,
-          alipay_app_id: alipayAppId.trim(),
+          ...(alipayAppId.trim() ? { alipay_app_id: alipayAppId.trim() } : {}),
           ...(alipayPrivateKey.trim()
             ? { alipay_private_key: alipayPrivateKey.trim() }
             : {}),
@@ -343,6 +343,13 @@ export function AgentPaymentPanel(props: AgentPaymentPanelProps) {
               placeholder='2021...'
               autoComplete='off'
             />
+            {alipayEnabled && !alipayAppId.trim() && (
+              <p className='text-destructive text-xs'>
+                {t(
+                  'Alipay App ID is required. Saving without it disables checkout.'
+                )}
+              </p>
+            )}
             <Label>{t('Alipay application private key')}</Label>
             <p className='text-muted-foreground text-xs'>
               {t(

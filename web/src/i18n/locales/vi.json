@@ -369,6 +369,7 @@
     "Ali": "Alibaba Bailian",
     "Alipay": "Alipay",
     "Alipay App ID": "App ID Alipay",
+    "Alipay App ID is required. Saving without it disables checkout.": "Bắt buộc có Alipay App ID. Lưu trống sẽ tắt thanh toán.",
     "Alipay application private key": "Khóa riêng ứng dụng Alipay",
     "Alipay application public key": "Khóa công khai ứng dụng Alipay",
     "Alipay notify URL": "URL thông báo Alipay",

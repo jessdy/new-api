@@ -369,6 +369,7 @@
     "Ali": "アリババ百炼",
     "Alipay": "Alipay",
     "Alipay App ID": "AlipayアプリID",
+    "Alipay App ID is required. Saving without it disables checkout.": "AlipayのApp IDは必須です。空のまま保存すると決済が無効になります。",
     "Alipay application private key": "Alipayアプリ秘密鍵",
     "Alipay application public key": "アップロード用アプリ公開鍵",
     "Alipay notify URL": "Alipay通知URL",

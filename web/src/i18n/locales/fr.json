@@ -369,6 +369,7 @@
     "Ali": "Alibaba Bailian",
     "Alipay": "Alipay",
     "Alipay App ID": "ID d'application Alipay",
+    "Alipay App ID is required. Saving without it disables checkout.": "L'App ID Alipay est obligatoire. L'enregistrer vide désactive le paiement.",
     "Alipay application private key": "Clé privée de l'application Alipay",
     "Alipay application public key": "Clé publique d'application Alipay",
     "Alipay notify URL": "URL de notification Alipay",

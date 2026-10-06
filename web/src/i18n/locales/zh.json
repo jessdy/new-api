@@ -369,6 +369,7 @@
     "Ali": "阿里百炼",
     "Alipay": "支付宝",
     "Alipay App ID": "支付宝 App ID",
+    "Alipay App ID is required. Saving without it disables checkout.": "必须填写支付宝 App ID。空着保存会关掉在线充值。",
     "Alipay application private key": "支付宝应用私钥",
     "Alipay application public key": "待上传的应用公钥",
     "Alipay notify URL": "支付宝异步通知地址",
