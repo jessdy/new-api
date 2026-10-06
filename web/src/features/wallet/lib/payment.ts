@@ -29,48 +29,45 @@ import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 // ============================================================================
 
 /**
- * Check if browser is Safari
- */
-function isSafariBrowser(): boolean {
-  return (
-    navigator.userAgent.includes('Safari') &&
-    !navigator.userAgent.includes('Chrome')
-  )
-}
-
-/**
- * Submit payment form (for non-Stripe payments)
+ * Submit payment form (for non-Stripe payments).
+ *
+ * Alipay sends a field named "method". A form targeted at _blank then loses
+ * its POST body in Chromium and the gateway reports missing-method. Writing
+ * an auto-submitting document into the new window keeps the POST in that
+ * document, which is the path Alipay's own checkout page uses.
  */
 export function submitPaymentForm(
   url: string,
   params: Record<string, unknown>
 ): void {
-  const form = document.createElement('form')
-  form.acceptCharset = 'UTF-8'
-  form.style.display = 'none'
-  if (!isSafariBrowser()) {
-    form.setAttribute('target', '_blank')
-  }
+  const html = paymentAutoSubmitHtml(url, params)
+  const payWindow = window.open('', '_blank')
+  const doc = payWindow?.document ?? document
+  doc.open()
+  doc.write(html)
+  doc.close()
+}
 
-  for (const [key, value] of Object.entries(params)) {
-    const input = document.createElement('input')
-    input.type = 'hidden'
-    input.name = key
-    input.value = String(value ?? '')
-    form.appendChild(input)
-  }
+function paymentAutoSubmitHtml(
+  url: string,
+  params: Record<string, unknown>
+): string {
+  const inputs = Object.entries(params)
+    .map(([key, value]) => {
+      const name = escapePaymentAttr(key)
+      const field = escapePaymentAttr(String(value ?? ''))
+      return `<input type="hidden" name="${name}" value="${field}">`
+    })
+    .join('')
+  return `<!doctype html><html><head><meta charset="utf-8"></head><body><form id="pay" method="post" action="${escapePaymentAttr(url)}" accept-charset="UTF-8">${inputs}</form><script>document.getElementById('pay').submit();</script></body></html>`
+}
 
-  // Alipay (and Epay) send a field named "method". That name shadows
-  // form.method, so browsers fall back to GET and Alipay reports missing-method.
-  // Set the HTTP method via the attribute after inputs exist, and keep the
-  // form in the document until the browser finishes serializing the POST.
-  form.setAttribute('method', 'post')
-  form.setAttribute('action', url)
-  document.body.appendChild(form)
-  HTMLFormElement.prototype.submit.call(form)
-  window.setTimeout(() => {
-    form.remove()
-  }, 2000)
+function escapePaymentAttr(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
 /**

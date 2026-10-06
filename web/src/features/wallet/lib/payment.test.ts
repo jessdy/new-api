@@ -90,35 +90,34 @@ describe('payment dispatch', () => {
 
 describe('submitPaymentForm', () => {
   afterEach(() => {
-    vi.useRealTimers()
     vi.restoreAllMocks()
-    document.body.replaceChildren()
   })
 
-  test('posts Alipay params without letting the method field override HTTP POST', () => {
-    vi.useFakeTimers()
-    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined)
+  test('posts Alipay from a new document so the method field is not dropped', () => {
+    const written: string[] = []
+    const payWindow = {
+      document: {
+        open: () => undefined,
+        write: (html: string) => {
+          written.push(html)
+        },
+        close: () => undefined,
+      },
+    }
+    vi.spyOn(window, 'open').mockReturnValue(payWindow as unknown as Window)
 
     submitPaymentForm('https://openapi.alipay.com/gateway.do?charset=utf-8', {
       method: 'alipay.trade.page.pay',
-      app_id: '2021007105612217',
-      charset: 'utf-8',
+      biz_content: '{"subject":"a&b"}',
     })
 
-    const form = document.querySelector('form')
-    expect(form).toBeInstanceOf(HTMLFormElement)
-    expect(form?.getAttribute('method')).toBe('post')
-    expect(form?.getAttribute('action')).toBe(
-      'https://openapi.alipay.com/gateway.do?charset=utf-8'
+    expect(window.open).toHaveBeenCalledWith('', '_blank')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toContain('method="post"')
+    expect(written[0]).toContain(
+      'name="method" value="alipay.trade.page.pay"'
     )
-    const methodField = form?.querySelector('input[name="method"]')
-    expect(methodField).toBeInstanceOf(HTMLInputElement)
-    expect((methodField as HTMLInputElement).value).toBe(
-      'alipay.trade.page.pay'
-    )
-    expect(form && document.body.contains(form)).toBe(true)
-
-    vi.advanceTimersByTime(2000)
-    expect(form && document.body.contains(form)).toBe(false)
+    expect(written[0]).toContain('a&amp;b')
+    expect(written[0]).not.toContain('target=')
   })
 })
