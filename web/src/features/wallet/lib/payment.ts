@@ -46,27 +46,31 @@ export function submitPaymentForm(
   params: Record<string, unknown>
 ): void {
   const form = document.createElement('form')
-  form.setAttribute('method', 'POST')
-  form.setAttribute('action', url)
   form.acceptCharset = 'UTF-8'
-
-  // Don't open in new tab for Safari
+  form.style.display = 'none'
   if (!isSafariBrowser()) {
-    form.target = '_blank'
+    form.setAttribute('target', '_blank')
   }
 
-  // Add form parameters
-  Object.entries(params).forEach(([key, value]) => {
+  for (const [key, value] of Object.entries(params)) {
     const input = document.createElement('input')
     input.type = 'hidden'
     input.name = key
-    input.value = String(value)
+    input.value = String(value ?? '')
     form.appendChild(input)
-  })
+  }
 
+  // Alipay (and Epay) send a field named "method". That name shadows
+  // form.method, so browsers fall back to GET and Alipay reports missing-method.
+  // Set the HTTP method via the attribute after inputs exist, and keep the
+  // form in the document until the browser finishes serializing the POST.
+  form.setAttribute('method', 'post')
+  form.setAttribute('action', url)
   document.body.appendChild(form)
-  form.submit()
-  document.body.removeChild(form)
+  HTMLFormElement.prototype.submit.call(form)
+  window.setTimeout(() => {
+    form.remove()
+  }, 2000)
 }
 
 /**

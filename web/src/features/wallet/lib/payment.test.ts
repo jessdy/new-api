@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { PAYMENT_TYPES } from '../constants'
 import {
@@ -25,6 +25,7 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  submitPaymentForm,
 } from './payment'
 
 describe('payment type classification', () => {
@@ -84,5 +85,40 @@ describe('payment dispatch', () => {
 
     expect(success).toBe(false)
     expect(called).toBe(false)
+  })
+})
+
+describe('submitPaymentForm', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    document.body.replaceChildren()
+  })
+
+  test('posts Alipay params without letting the method field override HTTP POST', () => {
+    vi.useFakeTimers()
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined)
+
+    submitPaymentForm('https://openapi.alipay.com/gateway.do?charset=utf-8', {
+      method: 'alipay.trade.page.pay',
+      app_id: '2021007105612217',
+      charset: 'utf-8',
+    })
+
+    const form = document.querySelector('form')
+    expect(form).toBeInstanceOf(HTMLFormElement)
+    expect(form?.getAttribute('method')).toBe('post')
+    expect(form?.getAttribute('action')).toBe(
+      'https://openapi.alipay.com/gateway.do?charset=utf-8'
+    )
+    const methodField = form?.querySelector('input[name="method"]')
+    expect(methodField).toBeInstanceOf(HTMLInputElement)
+    expect((methodField as HTMLInputElement).value).toBe(
+      'alipay.trade.page.pay'
+    )
+    expect(form && document.body.contains(form)).toBe(true)
+
+    vi.advanceTimersByTime(2000)
+    expect(form && document.body.contains(form)).toBe(false)
   })
 })
