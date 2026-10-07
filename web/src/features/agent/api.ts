@@ -120,6 +120,7 @@ export type AgentUser = {
   inviter_id?: number
   inviter_username?: string
   agent_member_role?: AgentMemberRole
+  agent_remark?: string
 }
 
 export type AgentPaymentConfigView = {
@@ -180,7 +181,9 @@ export async function replaceAgentChannels(
 export async function listAgentGroups(
   agentId?: number
 ): Promise<AgentGroupPricingView> {
-  const res = await api.get('/api/agent/groups', { params: agentParams(agentId) })
+  const res = await api.get('/api/agent/groups', {
+    params: agentParams(agentId),
+  })
   requireServerSuccess(res.data)
   return (
     res.data.data ?? {
@@ -266,7 +269,12 @@ export async function listAgentUsers(
 
 export async function updateAgentUser(
   userId: number,
-  payload: { agent_member_role?: AgentMemberRole; group?: string; status?: number },
+  payload: {
+    agent_member_role?: AgentMemberRole
+    group?: string
+    status?: number
+    agent_remark?: string
+  },
   agentId?: number
 ): Promise<void> {
   const res = await api.put(`/api/agent/users/${userId}`, payload, {

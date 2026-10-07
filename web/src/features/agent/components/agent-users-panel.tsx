@@ -29,9 +29,19 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { generateAffiliateLink } from '@/features/wallet/lib/affiliate'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { UserQuotaDialog } from '@/features/users/components/user-quota-dialog'
+import { generateAffiliateLink } from '@/features/wallet/lib/affiliate'
 import { formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -53,6 +63,8 @@ export function AgentUsersPanel(props: { agentId?: number }) {
   const [filter, setFilter] = useState('')
   const [quotaUser, setQuotaUser] = useState<AgentUser | null>(null)
   const [modelsUser, setModelsUser] = useState<AgentUser | null>(null)
+  const [remarkUser, setRemarkUser] = useState<AgentUser | null>(null)
+  const [remarkDraft, setRemarkDraft] = useState('')
   const usersQuery = useQuery({
     queryKey: ['agent', 'users', props.agentId],
     queryFn: () => listAgentUsers(1, 100, props.agentId),
@@ -70,18 +82,34 @@ export function AgentUsersPanel(props: { agentId?: number }) {
     },
     onError: (error) => handleServerError(error),
   })
+  const remarkMutation = useMutation({
+    mutationFn: (input: { userId: number; remark: string }) =>
+      updateAgentUser(
+        input.userId,
+        { agent_remark: input.remark },
+        props.agentId
+      ),
+    onSuccess: () => {
+      toast.success(t('Remark saved'))
+      setRemarkUser(null)
+      void usersQuery.refetch()
+    },
+    onError: (error) => handleServerError(error),
+  })
 
   const users = usersQuery.data?.items ?? []
   const filtered = useMemo(() => {
+    const rows = usersQuery.data?.items ?? []
     const q = filter.trim().toLowerCase()
-    if (!q) return users
-    return users.filter(
+    if (!q) return rows
+    return rows.filter(
       (user) =>
         user.username.toLowerCase().includes(q) ||
         user.display_name?.toLowerCase().includes(q) ||
+        user.agent_remark?.toLowerCase().includes(q) ||
         String(user.id).includes(q)
     )
-  }, [filter, users])
+  }, [filter, usersQuery.data?.items])
 
   const columns = useMemo<StaticDataTableColumn<AgentUser>[]>(
     () => [
@@ -114,6 +142,21 @@ export function AgentUsersPanel(props: { agentId?: number }) {
         id: 'group',
         header: t('Group'),
         cell: (user) => user.group,
+      },
+      {
+        id: 'remark',
+        header: t('Remark'),
+        cell: (user) =>
+          user.agent_remark ? (
+            <span
+              className='line-clamp-2 max-w-56 text-sm'
+              title={user.agent_remark}
+            >
+              {user.agent_remark}
+            </span>
+          ) : (
+            '—'
+          ),
       },
       {
         id: 'quota',
@@ -154,6 +197,16 @@ export function AgentUsersPanel(props: { agentId?: number }) {
               <Button
                 variant='outline'
                 size='sm'
+                onClick={() => {
+                  setRemarkDraft(user.agent_remark ?? '')
+                  setRemarkUser(user)
+                }}
+              >
+                {t('Remark')}
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
                 onClick={() => setQuotaUser(user)}
               >
                 {t('Adjust Quota')}
@@ -183,7 +236,7 @@ export function AgentUsersPanel(props: { agentId?: number }) {
         },
       },
     ],
-    [roleMutation.isPending, t]
+    [roleMutation, t]
   )
 
   if (usersQuery.isLoading) {
@@ -252,6 +305,56 @@ export function AgentUsersPanel(props: { agentId?: number }) {
           }}
         />
       ) : null}
+      <Dialog
+        open={remarkUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemarkUser(null)
+        }}
+      >
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>{t('Remark')}</DialogTitle>
+            <DialogDescription>
+              {remarkUser
+                ? `#${remarkUser.id} ${remarkUser.username}`
+                : t('Add a note about this user')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-2'>
+            <Label htmlFor='agent-user-remark'>
+              {t('Add a note about this user')}
+            </Label>
+            <Textarea
+              id='agent-user-remark'
+              value={remarkDraft}
+              maxLength={255}
+              rows={4}
+              onChange={(event) => setRemarkDraft(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant='outline'
+              onClick={() => setRemarkUser(null)}
+              disabled={remarkMutation.isPending}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button
+              onClick={() => {
+                if (!remarkUser) return
+                remarkMutation.mutate({
+                  userId: remarkUser.id,
+                  remark: remarkDraft,
+                })
+              }}
+              disabled={remarkMutation.isPending}
+            >
+              {t('Save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {modelsUser ? (
         <AgentUserModelSettingsDialog
           open

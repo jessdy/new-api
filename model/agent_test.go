@@ -294,6 +294,34 @@ func TestAgentInviteBinding(t *testing.T) {
 	assert.ElementsMatch(t, []int{invited.Id, viaAff.Id}, ids)
 }
 
+func TestListUsersByAgentIdReturnsAgentRemark(t *testing.T) {
+	newAgentTestDB(t)
+	agent := &Agent{
+		UserId:     31,
+		Name:       "reseller-remark",
+		InviteCode: "RemarkMe",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	noted := User{
+		Username:    "noted-user",
+		Password:    "placeholder",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AffCode:     "note",
+		AgentId:     agent.Id,
+		AgentRemark: "重点客户",
+	}
+	require.NoError(t, DB.Create(&noted).Error)
+
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, users, 1)
+	assert.Equal(t, "重点客户", users[0].AgentRemark)
+}
+
 func TestListUsersByAgentIdOnlyReturnsCurrentAgentUsers(t *testing.T) {
 	newAgentTestDB(t)
 	owner := User{

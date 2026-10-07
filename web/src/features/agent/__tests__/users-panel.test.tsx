@@ -57,9 +57,7 @@ it('shows invited users returned by the agent users API', async () => {
 
   renderPanel()
 
-  expect(
-    await screen.findByText(/#12 invited-alice/)
-  ).toBeInTheDocument()
+  expect(await screen.findByText(/#12 invited-alice/)).toBeInTheDocument()
 })
 
 it('shows an empty state when the agent has no invited users', async () => {
@@ -93,6 +91,45 @@ it('shows a retryable error when the agent users API fails', async () => {
   expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
 })
 
+it('shows a user remark and saves an edited note', async () => {
+  vi.spyOn(agentApi, 'listAgentUsers').mockResolvedValue({
+    items: [
+      {
+        id: 12,
+        username: 'invited-alice',
+        display_name: 'Alice',
+        status: 1,
+        group: 'default',
+        quota: 100,
+        used_quota: 0,
+        agent_remark: '重点客户',
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 50,
+  })
+  const update = vi.spyOn(agentApi, 'updateAgentUser').mockResolvedValue()
+  const user = userEvent.setup()
+
+  renderPanel()
+
+  expect(await screen.findByText('重点客户')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Remark' }))
+  const note = screen.getByLabelText('Add a note about this user')
+  await user.clear(note)
+  await user.type(note, '已跟进')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(update).toHaveBeenCalledWith(
+      12,
+      { agent_remark: '已跟进' },
+      undefined
+    )
+  })
+})
+
 it('lets an agent mark an invited user as sales', async () => {
   vi.spyOn(agentApi, 'listAgentUsers').mockResolvedValue({
     items: [
@@ -122,7 +159,11 @@ it('lets an agent mark an invited user as sales', async () => {
   expect(screen.getByRole('button', { name: 'Adjust Quota' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Model Settings' })).toBeEnabled()
   await userEvent.click(screen.getByRole('button', { name: 'Mark as sales' }))
-  expect(update).toHaveBeenCalledWith(12, { agent_member_role: 'sales' }, undefined)
+  expect(update).toHaveBeenCalledWith(
+    12,
+    { agent_member_role: 'sales' },
+    undefined
+  )
 })
 
 it('opens the quota dialog for an invited user', async () => {

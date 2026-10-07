@@ -271,6 +271,7 @@ type updateAgentUserRequest struct {
 	Status          *int    `json:"status"`
 	Group           *string `json:"group"`
 	AgentMemberRole *string `json:"agent_member_role"`
+	AgentRemark     *string `json:"agent_remark"`
 }
 
 func AgentUpdateUser(c *gin.Context) {
@@ -313,6 +314,14 @@ func AgentUpdateUser(c *gin.Context) {
 			return
 		}
 		fields["agent_member_role"] = role
+	}
+	if req.AgentRemark != nil {
+		remark := strings.TrimSpace(*req.AgentRemark)
+		if len([]rune(remark)) > 255 {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "remark is too long"})
+			return
+		}
+		fields["agent_remark"] = remark
 	}
 	if len(fields) == 0 {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "no fields to update"})

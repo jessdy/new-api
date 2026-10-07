@@ -304,6 +304,7 @@ type AgentManagedUser struct {
 	InviterId       int    `json:"inviter_id"`
 	InviterUsername string `json:"inviter_username"`
 	AgentMemberRole string `json:"agent_member_role"`
+	AgentRemark     string `json:"agent_remark"`
 	CreatedAt       int64  `json:"created_at"`
 }
 
@@ -321,7 +322,7 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 	}
 	var users []User
 	err = agentChannelUsersQuery(agent).
-		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "created_at").
+		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "agent_remark", "created_at").
 		Order("id desc").Offset(offset).Limit(limit).Find(&users).Error
 	if err != nil {
 		return nil, 0, err
@@ -363,6 +364,7 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 			InviterId:       users[i].InviterId,
 			InviterUsername: names[users[i].InviterId],
 			AgentMemberRole: NormalizeAgentMemberRole(users[i].AgentMemberRole),
+			AgentRemark:     users[i].AgentRemark,
 			CreatedAt:       users[i].CreatedAt,
 		})
 	}
