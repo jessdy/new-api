@@ -65,6 +65,8 @@ export function PaymentConfirmDialog({
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const paymentMethodLabel =
+    paymentMethod?.name === 'Alipay' ? t('Alipay') : paymentMethod?.name
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -133,9 +135,9 @@ export function PaymentConfirmDialog({
                   paymentMethod?.type,
                   'h-4 w-4',
                   paymentMethod?.icon,
-                  paymentMethod?.name
+                  paymentMethodLabel
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
+                <span className='font-medium'>{paymentMethodLabel}</span>
               </div>
             </div>
           </div>

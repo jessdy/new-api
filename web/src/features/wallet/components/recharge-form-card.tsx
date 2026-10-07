@@ -34,11 +34,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatNumber } from '@/lib/format'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
-  formatCurrency,
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
@@ -255,9 +254,11 @@ export function RechargeFormCard({
                           )}
                           onClick={() => onSelectPreset(preset)}
                         >
-                          <div className='flex w-full items-center justify-between'>
-                            <div className='text-base font-semibold sm:text-lg'>
-                              {formatNumber(displayValue)}
+                          <div className='flex w-full items-center justify-between gap-2'>
+                            <div className='text-base font-semibold tracking-tight tabular-nums sm:text-lg'>
+                              {formatLocalCurrencyAmount(displayValue, {
+                                abbreviate: false,
+                              })}
                             </div>
                             {hasDiscount && (
                               <div className='text-xs font-medium text-green-600'>
@@ -266,11 +267,21 @@ export function RechargeFormCard({
                             )}
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            Pay {formatCurrency(actualPrice)}
+                            {t('Pay {{amount}}', {
+                              amount: formatLocalCurrencyAmount(actualPrice, {
+                                abbreviate: false,
+                              }),
+                            })}
                             {hasDiscount && savedAmount > 0 && (
                               <span className='text-green-600'>
                                 {' '}
-                                • Save {formatCurrency(savedAmount)}
+                                ·{' '}
+                                {t('Save {{amount}}', {
+                                  amount: formatLocalCurrencyAmount(
+                                    savedAmount,
+                                    { abbreviate: false }
+                                  ),
+                                })}
                               </span>
                             )}
                           </div>
@@ -305,8 +316,10 @@ export function RechargeFormCard({
                     {calculating ? (
                       <Skeleton className='h-5 w-16' />
                     ) : (
-                      <span className='text-sm font-semibold'>
-                        {formatCurrency(paymentAmount)}
+                      <span className='text-sm font-semibold tabular-nums'>
+                        {formatLocalCurrencyAmount(paymentAmount, {
+                          abbreviate: false,
+                        })}
                       </span>
                     )}
                   </div>
@@ -333,6 +346,8 @@ export function RechargeFormCard({
                       const disabledLabel = disabled
                         ? `${t('Minimum:')} ${minTopup}`
                         : undefined
+                      const methodLabel =
+                        method.name === 'Alipay' ? t('Alipay') : method.name
 
                       const button = (
                         <Button
@@ -343,8 +358,8 @@ export function RechargeFormCard({
                           title={disabledReason}
                           aria-label={
                             disabledReason
-                              ? `${method.name}. ${disabledReason}`
-                              : method.name
+                              ? `${methodLabel}. ${disabledReason}`
+                              : methodLabel
                           }
                           className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
                         >
@@ -355,12 +370,12 @@ export function RechargeFormCard({
                               method.type,
                               'h-4 w-4',
                               method.icon,
-                              method.name
+                              methodLabel
                             )
                           )}
                           <span className='flex min-w-0 flex-col items-start gap-0.5'>
                             <span className='max-w-full truncate'>
-                              {method.name}
+                              {methodLabel}
                             </span>
                             {disabledLabel && (
                               <span className='text-muted-foreground max-w-full truncate text-[11px] leading-4 font-normal'>
@@ -550,15 +565,7 @@ export function RechargeFormCard({
             </p>
           )}
         </div>
-      ) : (
-        <Alert className='border-t'>
-          <AlertDescription>
-            {t(
-              'Redemption codes are disabled until the administrator confirms compliance terms.'
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+      ) : null}
     </TitledCard>
   )
 }
