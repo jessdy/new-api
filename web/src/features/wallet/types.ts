@@ -134,6 +134,10 @@ export interface TopupInfo {
   amount_options: number[]
   /** Discount rates by amount */
   discount: Record<number, number>
+  /** Charge for one top-up unit before preset discounts */
+  price?: number
+  /** Owning agent. Preset amounts from an agent are already in checkout currency. */
+  agent_id?: number
   /** Optional topup link for purchasing codes */
   topup_link?: string
   /** Whether Creem topup is enabled */

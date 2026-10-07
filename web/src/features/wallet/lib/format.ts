@@ -73,6 +73,28 @@ export function getDiscountLabel(discount: number): string {
 }
 
 /**
+ * Agent amount options are already in the checkout currency.
+ * Platform presets stay in system USD and convert with the display rate.
+ */
+export function resolvePresetQuoteInputs(input: {
+  agentId?: number
+  unitPrice?: number
+  platformPrice: number
+  exchangeRate: number
+}): { priceRatio: number; exchangeRate: number } {
+  if ((input.agentId ?? 0) > 0) {
+    return {
+      priceRatio: input.unitPrice && input.unitPrice > 0 ? input.unitPrice : 1,
+      exchangeRate: 1,
+    }
+  }
+  return {
+    priceRatio: input.platformPrice || 1,
+    exchangeRate: input.exchangeRate || 1,
+  }
+}
+
+/**
  * Calculate pricing details for a preset amount
  */
 export function calculatePresetPricing(

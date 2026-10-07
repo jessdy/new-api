@@ -291,6 +291,21 @@ func resolveAlipayGatewayForTopUp(topUp *model.TopUp) (*resolvedAlipayGateway, e
 	return resolveAlipayGatewayForAgent(topUp.AgentId)
 }
 
+// topUpUnitPrice is the charge for one top-up unit before preset discounts.
+// Agent checkouts use the agent unit price; platform checkouts use the platform price.
+func topUpUnitPrice(userId int, group string) float64 {
+	pricing := resolveAgentTopUpPricing(userId)
+	money := getPayMoneyWithPricing(1, group, pricing.Price, nil)
+	if pricing.AgentId <= 0 {
+		return money
+	}
+	ratio := service.GetAgentTopupRatio(pricing.AgentId, group)
+	if ratio <= 0 {
+		ratio = 1
+	}
+	return money * ratio
+}
+
 func getPayMoneyForUser(userId int, amount int64, group string) float64 {
 	pricing := resolveAgentTopUpPricing(userId)
 	money := getPayMoneyWithPricing(amount, group, pricing.Price, pricing.AmountDiscount)

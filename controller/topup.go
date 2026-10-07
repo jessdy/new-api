@@ -142,6 +142,12 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	topupGroup := ""
+	if userId > 0 {
+		if userGroup, groupErr := model.GetUserGroup(userId, true); groupErr == nil {
+			topupGroup = userGroup
+		}
+	}
 	data := gin.H{
 		"enable_online_topup":              enableOnlineTopup,
 		"enable_stripe_topup":              enableStripe,
@@ -165,6 +171,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"amount_options":          pricing.AmountOptions,
 		"discount":                pricing.AmountDiscount,
+		"price":                   topUpUnitPrice(userId, topupGroup),
 		"topup_link":              common.TopUpLink,
 		"agent_id":                agentId,
 	}
@@ -192,36 +199,6 @@ func GetEpayClient() *epay.Client {
 		return nil
 	}
 	return withUrl
-}
-
-func getPayMoney(amount int64, group string) float64 {
-	dAmount := decimal.NewFromInt(amount)
-	// 充值金额以“展示类型”为准：
-	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		dAmount = dAmount.Div(dQuotaPerUnit)
-	}
-
-	topupGroupRatio := common.GetTopupGroupRatio(group)
-	if topupGroupRatio == 0 {
-		topupGroupRatio = 1
-	}
-
-	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
-	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
-	dDiscount := decimal.NewFromFloat(discount)
-
-	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
-
-	return payMoney.InexactFloat64()
 }
 
 func getMinTopup() int64 {
@@ -588,7 +565,7 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
+	payMoney := getPayMoneyForUser(id, req.Amount, group)
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return

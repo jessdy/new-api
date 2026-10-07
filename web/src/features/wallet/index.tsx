@@ -46,6 +46,7 @@ import {
   getDefaultPaymentType,
   getMinTopupAmount,
   dispatchSelectedPayment,
+  resolvePresetQuoteInputs,
 } from './lib'
 import type {
   UserWalletData,
@@ -90,6 +91,21 @@ export function Wallet(props: WalletProps) {
       ? 1
       : currency?.usdExchangeRate || 1
   }, [currency?.quotaDisplayType, currency?.usdExchangeRate])
+  const presetQuote = useMemo(
+    () =>
+      resolvePresetQuoteInputs({
+        agentId: topupInfo?.agent_id,
+        unitPrice: topupInfo?.price,
+        platformPrice: (status?.price as number) || 1,
+        exchangeRate: effectiveUsdExchangeRate,
+      }),
+    [
+      effectiveUsdExchangeRate,
+      status?.price,
+      topupInfo?.agent_id,
+      topupInfo?.price,
+    ]
+  )
   const {
     amount: paymentAmount,
     calculating,
@@ -315,8 +331,8 @@ export function Wallet(props: WalletProps) {
                   redeeming={redeeming}
                   topupLink={topupInfo?.topup_link}
                   loading={topupLoading}
-                  priceRatio={(status?.price as number) || 1}
-                  usdExchangeRate={effectiveUsdExchangeRate}
+                  priceRatio={presetQuote.priceRatio}
+                  usdExchangeRate={presetQuote.exchangeRate}
                   onOpenBilling={() => setBillingDialogOpen(true)}
                   creemProducts={topupInfo?.creem_products}
                   enableCreemTopup={topupInfo?.enable_creem_topup}
@@ -362,7 +378,7 @@ export function Wallet(props: WalletProps) {
         calculating={calculating}
         processing={processing || waffoProcessing || pancakeProcessing}
         discountRate={getDiscountRate()}
-        usdExchangeRate={effectiveUsdExchangeRate}
+        usdExchangeRate={presetQuote.exchangeRate}
       />
 
       <TransferDialog
