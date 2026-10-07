@@ -446,6 +446,7 @@ func SetApiRouter(router *gin.Engine) {
 			agentRoute.GET("/models", middleware.RequirePermission(authz.AgentModelCostRead), controller.AgentListModels)
 			agentRoute.PUT("/models/cost", middleware.RequirePermission(authz.AgentModelCostWrite), controller.AgentUpsertModelCost)
 			agentRoute.GET("/users", middleware.RequirePermission(authz.AgentUserRead), controller.AgentListUsers)
+			agentRoute.DELETE("/users/:id", middleware.RequirePermission(authz.AgentUserWrite), controller.AgentDeleteUser)
 			agentRoute.PUT("/users/:id", middleware.RequirePermission(authz.AgentUserWrite), controller.AgentUpdateUser)
 			agentRoute.POST("/users/:id/quota", middleware.RequirePermission(authz.AgentUserWrite), controller.AgentAdjustUserQuota)
 			agentRoute.GET("/users/:id/models", middleware.RequirePermission(authz.AgentUserRead), controller.AgentGetUserModelSettings)

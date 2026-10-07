@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If you did not, see <https://www.gnu.org/licenses/>.
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
@@ -194,4 +194,91 @@ it('opens the quota dialog for an invited user', async () => {
     await screen.findByText('Select an operation mode and enter the amount')
   ).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+})
+
+it('deletes a user after confirmation', async () => {
+  vi.spyOn(agentApi, 'listAgentUsers').mockResolvedValue({
+    items: [
+      {
+        id: 12,
+        username: 'invited-alice',
+        display_name: 'Alice',
+        status: 1,
+        group: 'default',
+        quota: 100,
+        used_quota: 0,
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 100,
+  })
+  const remove = vi.spyOn(agentApi, 'deleteAgentUser').mockResolvedValue()
+  const user = userEvent.setup()
+
+  renderPanel()
+
+  await user.click(await screen.findByRole('button', { name: 'Delete' }))
+  const dialog = await screen.findByRole('alertdialog')
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+  await waitFor(() => {
+    expect(remove).toHaveBeenCalledWith(12, undefined)
+  })
+})
+
+it('loads deleted users when the status filter changes', async () => {
+  const list = vi
+    .spyOn(agentApi, 'listAgentUsers')
+    .mockImplementation(async (_page, _pageSize, _agentId, status) => {
+      if (status === -1) {
+        return {
+          items: [
+            {
+              id: 9,
+              username: 'gone-user',
+              display_name: 'Gone',
+              status: 1,
+              group: 'default',
+              quota: 0,
+              used_quota: 0,
+              deleted: true,
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 100,
+        }
+      }
+      return {
+        items: [
+          {
+            id: 12,
+            username: 'invited-alice',
+            display_name: 'Alice',
+            status: 1,
+            group: 'default',
+            quota: 100,
+            used_quota: 0,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 100,
+      }
+    })
+  const user = userEvent.setup()
+
+  renderPanel()
+
+  expect(await screen.findByText(/#12 invited-alice/)).toBeInTheDocument()
+  await user.click(screen.getByRole('combobox', { name: 'Status' }))
+  await user.click(await screen.findByRole('option', { name: 'Deleted' }))
+
+  expect(await screen.findByText(/#9 gone-user/)).toBeInTheDocument()
+  expect(screen.getAllByText('Deleted').length).toBeGreaterThan(1)
+  expect(
+    screen.queryByRole('button', { name: 'Delete' })
+  ).not.toBeInTheDocument()
+  expect(list).toHaveBeenCalledWith(1, 100, undefined, -1)
 })

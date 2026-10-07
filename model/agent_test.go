@@ -286,7 +286,7 @@ func TestAgentInviteBinding(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&viaAff).Error)
 
-	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	require.Len(t, users, 2)
@@ -315,11 +315,117 @@ func TestListUsersByAgentIdReturnsAgentRemark(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&noted).Error)
 
-	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, users, 1)
 	assert.Equal(t, "重点客户", users[0].AgentRemark)
+}
+
+func TestListUsersByAgentIdFiltersByStatusIncludingDeleted(t *testing.T) {
+	newAgentTestDB(t)
+	owner := User{
+		Username: "status-owner",
+		Password: "placeholder",
+		Role:     common.RoleAgentUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "stow",
+	}
+	require.NoError(t, DB.Create(&owner).Error)
+	agent := &Agent{
+		UserId:     owner.Id,
+		Name:       "status-agent",
+		InviteCode: "stata",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	enabled := User{
+		Username: "enabled-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "sten",
+		AgentId:  agent.Id,
+	}
+	disabled := User{
+		Username: "disabled-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusDisabled,
+		Group:    "default",
+		AffCode:  "stdis",
+		AgentId:  agent.Id,
+	}
+	removed := User{
+		Username: "removed-member",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "stdel",
+		AgentId:  agent.Id,
+	}
+	require.NoError(t, DB.Create(&enabled).Error)
+	require.NoError(t, DB.Create(&disabled).Error)
+	require.NoError(t, DB.Create(&removed).Error)
+	require.NoError(t, DB.Delete(&User{}, removed.Id).Error)
+
+	other := &Agent{
+		UserId:     owner.Id + 1000,
+		Name:       "other-status-agent",
+		InviteCode: "statb",
+		Status:     AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(other))
+	foreignDeleted := User{
+		Username: "foreign-deleted",
+		Password: "placeholder",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "stfor",
+		AgentId:  other.Id,
+	}
+	require.NoError(t, DB.Create(&foreignDeleted).Error)
+	require.NoError(t, DB.Delete(&User{}, foreignDeleted.Id).Error)
+
+	active, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, active, 2)
+	for _, user := range active {
+		assert.False(t, user.Deleted)
+	}
+
+	enabledStatus := common.UserStatusEnabled
+	enabledUsers, total, err := ListUsersByAgentId(agent.Id, 0, 20, &enabledStatus)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, enabledUsers, 1)
+	assert.Equal(t, enabled.Id, enabledUsers[0].Id)
+	assert.False(t, enabledUsers[0].Deleted)
+
+	disabledStatus := common.UserStatusDisabled
+	disabledUsers, total, err := ListUsersByAgentId(agent.Id, 0, 20, &disabledStatus)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, disabledUsers, 1)
+	assert.Equal(t, disabled.Id, disabledUsers[0].Id)
+
+	deletedStatus := AgentUserListStatusDeleted
+	deletedUsers, total, err := ListUsersByAgentId(agent.Id, 0, 20, &deletedStatus)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, deletedUsers, 1)
+	assert.Equal(t, removed.Id, deletedUsers[0].Id)
+	assert.Equal(t, "removed-member", deletedUsers[0].Username)
+	assert.True(t, deletedUsers[0].Deleted)
+
+	invalid := 9
+	_, _, err = ListUsersByAgentId(agent.Id, 0, 20, &invalid)
+	require.Error(t, err)
 }
 
 func TestListUsersByAgentIdOnlyReturnsCurrentAgentUsers(t *testing.T) {
@@ -391,7 +497,7 @@ func TestListUsersByAgentIdOnlyReturnsCurrentAgentUsers(t *testing.T) {
 		"agent_id": agent.Id,
 	}).Error)
 
-	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, users, 1)
@@ -498,7 +604,7 @@ func TestListUsersByAgentIdPostgres(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&member).Error)
 
-	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, users, 1)
@@ -552,7 +658,7 @@ func TestAgentSalesInviteInheritsAgent(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&customer).Error)
 
-	users, total, err := ListUsersByAgentId(agent.Id, 0, 20)
+	users, total, err := ListUsersByAgentId(agent.Id, 0, 20, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	ids := []int{users[0].Id, users[1].Id}

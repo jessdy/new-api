@@ -117,6 +117,7 @@ import {
   hasPermission,
 } from '@/lib/admin-permissions'
 import {
+  channelBaseUrlFromConnection,
   parseChannelConnectionInfo,
   type ChannelConnectionInfo,
 } from '@/lib/channel-connection-info'
@@ -764,10 +765,14 @@ export function ChannelMutateDrawer({
         shouldDirty: true,
         shouldValidate: true,
       })
-      form.setValue('base_url', connectionInfo.url, {
-        shouldDirty: true,
-        shouldValidate: true,
-      })
+      form.setValue(
+        'base_url',
+        channelBaseUrlFromConnection(connectionInfo.url),
+        {
+          shouldDirty: true,
+          shouldValidate: true,
+        }
+      )
       setClipboardConnectionInfo(null)
       toast.success(t('Connection info filled in'))
     },

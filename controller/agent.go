@@ -254,7 +254,16 @@ func AgentListUsers(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	users, total, err := model.ListUsersByAgentId(agent.Id, (page-1)*pageSize, pageSize)
+	var status *int
+	if raw := strings.TrimSpace(c.Query("status")); raw != "" {
+		parsed, convErr := strconv.Atoi(raw)
+		if convErr != nil || (parsed != common.UserStatusEnabled && parsed != common.UserStatusDisabled && parsed != model.AgentUserListStatusDeleted) {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid status"})
+			return
+		}
+		status = &parsed
+	}
+	users, total, err := model.ListUsersByAgentId(agent.Id, (page-1)*pageSize, pageSize, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -331,6 +340,34 @@ func AgentUpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+func AgentDeleteUser(c *gin.Context) {
+	agent, ok := middleware.GetCurrentAgent(c)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "agent not found"})
+		return
+	}
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userId <= 0 {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "invalid user id"})
+		return
+	}
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil || user.AgentId != agent.Id || user.Id == agent.UserId || user.Role >= common.RoleAgentUser {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user not found"})
+		return
+	}
+	if err := user.Delete(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, user.Id, "user.delete", map[string]any{
+		"username": user.Username,
+		"id":       user.Id,
+		"agent_id": agent.Id,
+	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 

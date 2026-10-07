@@ -27,6 +27,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+export function openAICompatibleBaseUrl(address: string): string {
+  const trimmed = address.trim().replace(/\/+$/, '')
+  if (!trimmed || trimmed.endsWith('/v1')) return trimmed
+  return `${trimmed}/v1`
+}
+
+export function channelBaseUrlFromConnection(url: string): string {
+  return url.trim().replace(/\/+$/, '').replace(/\/v1$/, '')
+}
+
 export function encodeChannelConnectionInfo(key: string, url: string): string {
   return JSON.stringify({
     _type: CHANNEL_CONNECTION_INFO_TYPE,

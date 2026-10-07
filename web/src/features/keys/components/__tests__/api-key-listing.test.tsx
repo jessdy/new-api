@@ -469,6 +469,32 @@ it.each([true, false])(
   }
 )
 
+it('copies connection info with an OpenAI /v1 base URL', async () => {
+  localStorage.setItem(
+    'status',
+    JSON.stringify({ server_address: 'https://api.example.com/' })
+  )
+  const user = userEvent.setup()
+  const { post } = await renderKeysPage()
+  post.mockResolvedValue({
+    data: { success: true, data: { key: 'example' } },
+  })
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  await user.click(screen.getByRole('button', { name: 'Open menu' }))
+  await user.click(
+    screen.getByRole('menuitem', { name: 'Copy Connection Info' })
+  )
+  await waitFor(() =>
+    expect(copy).toHaveBeenCalledWith(
+      JSON.stringify({
+        _type: 'newapi_channel_conn',
+        key: 'sk-example',
+        url: 'https://api.example.com/v1',
+      })
+    )
+  )
+})
+
 it('keeps full mobile information without group or quota section headings', async () => {
   const matchMedia = window.matchMedia
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({

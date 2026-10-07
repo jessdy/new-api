@@ -305,10 +305,17 @@ type AgentManagedUser struct {
 	InviterUsername string `json:"inviter_username"`
 	AgentMemberRole string `json:"agent_member_role"`
 	AgentRemark     string `json:"agent_remark"`
+	Deleted         bool   `json:"deleted"`
 	CreatedAt       int64  `json:"created_at"`
 }
 
-func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int64, error) {
+// AgentUserListStatusDeleted selects soft-deleted users, matching admin user search.
+const AgentUserListStatusDeleted = -1
+
+func ListUsersByAgentId(agentId int, offset, limit int, status *int) ([]AgentManagedUser, int64, error) {
+	if status != nil && *status != common.UserStatusEnabled && *status != common.UserStatusDisabled && *status != AgentUserListStatusDeleted {
+		return nil, 0, errors.New("invalid status")
+	}
 	agent, err := GetAgentById(agentId)
 	if err != nil {
 		return nil, 0, err
@@ -317,12 +324,12 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 		return nil, 0, err
 	}
 	var total int64
-	if err := agentChannelUsersQuery(agent).Count(&total).Error; err != nil {
+	if err := agentChannelUsersQuery(agent, status).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var users []User
-	err = agentChannelUsersQuery(agent).
-		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "agent_remark", "created_at").
+	err = agentChannelUsersQuery(agent, status).
+		Select("id", "username", "display_name", "status", "group", "quota", "used_quota", "aff_code", "inviter_id", "agent_member_role", "agent_remark", "deleted_at", "created_at").
 		Order("id desc").Offset(offset).Limit(limit).Find(&users).Error
 	if err != nil {
 		return nil, 0, err
@@ -365,21 +372,30 @@ func ListUsersByAgentId(agentId int, offset, limit int) ([]AgentManagedUser, int
 			InviterUsername: names[users[i].InviterId],
 			AgentMemberRole: NormalizeAgentMemberRole(users[i].AgentMemberRole),
 			AgentRemark:     users[i].AgentRemark,
+			Deleted:         users[i].DeletedAt.Valid,
 			CreatedAt:       users[i].CreatedAt,
 		})
 	}
 	return items, total, nil
 }
 
-func agentChannelUsersQuery(agent *Agent) *gorm.DB {
+func agentChannelUsersQuery(agent *Agent, status *int) *gorm.DB {
 	if agent == nil {
 		return DB.Model(&User{}).Where("1 = 0")
 	}
-	query := DB.Model(&User{}).Where("agent_id = ?", agent.Id)
+	query := DB.Model(&User{})
+	if status != nil && *status == AgentUserListStatusDeleted {
+		query = query.Unscoped().Where("deleted_at IS NOT NULL")
+	}
+	query = query.Where("agent_id = ?", agent.Id)
 	if agent.UserId > 0 {
 		query = query.Where("id <> ?", agent.UserId)
 	}
-	return query.Where("role < ?", common.RoleAgentUser)
+	query = query.Where("role < ?", common.RoleAgentUser)
+	if status != nil && *status != AgentUserListStatusDeleted {
+		query = query.Where("status = ?", *status)
+	}
+	return query
 }
 
 func ListUserIDsByAgentID(agentId int) ([]int, error) {

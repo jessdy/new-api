@@ -121,6 +121,7 @@ export type AgentUser = {
   inviter_username?: string
   agent_member_role?: AgentMemberRole
   agent_remark?: string
+  deleted?: boolean
 }
 
 export type AgentPaymentConfigView = {
@@ -253,10 +254,16 @@ export async function upsertAgentModelPrice(
 export async function listAgentUsers(
   page = 1,
   pageSize = 20,
-  agentId?: number
+  agentId?: number,
+  status?: number
 ) {
   const res = await api.get('/api/agent/users', {
-    params: { p: page, page_size: pageSize, ...agentParams(agentId) },
+    params: {
+      p: page,
+      page_size: pageSize,
+      ...agentParams(agentId),
+      ...(status === undefined ? {} : { status }),
+    },
   })
   requireServerSuccess(res.data)
   return res.data.data as {
@@ -278,6 +285,16 @@ export async function updateAgentUser(
   agentId?: number
 ): Promise<void> {
   const res = await api.put(`/api/agent/users/${userId}`, payload, {
+    params: agentParams(agentId),
+  })
+  requireServerSuccess(res.data)
+}
+
+export async function deleteAgentUser(
+  userId: number,
+  agentId?: number
+): Promise<void> {
+  const res = await api.delete(`/api/agent/users/${userId}`, {
     params: agentParams(agentId),
   })
   requireServerSuccess(res.data)

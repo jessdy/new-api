@@ -50,7 +50,10 @@ import {
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
-import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
+import {
+  encodeChannelConnectionInfo,
+  openAICompatibleBaseUrl,
+} from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -241,7 +244,7 @@ export function DataTableRowActions<TData>({
             if (!realKey) return
             const connStr = encodeChannelConnectionInfo(
               realKey,
-              getServerAddress()
+              openAICompatibleBaseUrl(getServerAddress())
             )
             const ok = await copyToClipboard(connStr)
             if (ok) toast.success(t('Copied'))
