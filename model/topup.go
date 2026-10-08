@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -58,6 +59,29 @@ func (topUp *TopUp) Insert() error {
 	var err error
 	err = DB.Create(topUp).Error
 	return err
+}
+
+// QuotaForTopUpAmount converts a checkout amount into stored quota.
+// Platform amounts are USD units. Agent checkout amounts are already in the
+// quota display currency, so a CNY amount is divided by the USD exchange rate
+// before it is stored. Otherwise ¥1 is credited as $1 and shown as ¥7.
+func QuotaForTopUpAmount(amount int64, agentId int) (int, error) {
+	if amount <= 0 || common.QuotaPerUnit <= 0 {
+		return 0, ErrInvalidTopUpQuota
+	}
+	units := decimal.NewFromInt(amount)
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		units = decimal.NewFromInt(units.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
+		return common.WalletQuotaFromDecimalStrict(units)
+	}
+	if agentId > 0 {
+		rate := operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
+		if rate > 0 && rate != 1 {
+			units = units.Div(decimal.NewFromFloat(rate))
+		}
+	}
+	return common.WalletQuotaFromDecimalStrict(units.Mul(quotaPerUnit))
 }
 
 func topUpQuotaMaxCurrent(creditedQuota int) (int, error) {
@@ -214,9 +238,7 @@ func rechargeOnlineTopUp(tradeNo string, expectedProvider string, actualPaymentM
 			topUp.PaymentMethod = actualPaymentMethod
 		}
 		var quotaErr error
-		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-		)
+		quotaToAdd, quotaErr = QuotaForTopUpAmount(topUp.Amount, topUp.AgentId)
 		if quotaErr != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
 		}
@@ -497,9 +519,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 				decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
 		} else {
-			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-			)
+			quotaToAdd, quotaErr = QuotaForTopUpAmount(topUp.Amount, topUp.AgentId)
 		}
 		if quotaErr != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
@@ -635,9 +655,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-		)
+		quotaToAdd, err = QuotaForTopUpAmount(topUp.Amount, topUp.AgentId)
 		if err != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
 		}
@@ -695,9 +713,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-		)
+		quotaToAdd, err = QuotaForTopUpAmount(topUp.Amount, topUp.AgentId)
 		if err != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
 		}

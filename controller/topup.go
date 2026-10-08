@@ -215,15 +215,8 @@ func getMinTopup() int64 {
 	return int64(minTopup)
 }
 
-func getTopUpQuota(amount int64) (int, error) {
-	quota := decimal.NewFromInt(amount)
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
-	} else {
-		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
-	}
-	return common.WalletQuotaFromDecimalStrict(quota)
+func getTopUpQuota(amount int64, agentId int) (int, error) {
+	return model.QuotaForTopUpAmount(amount, agentId)
 }
 
 func getMaxTopUpAmount() int64 {
@@ -255,8 +248,8 @@ func validateCreditedQuota(quota decimal.Decimal) (int, error) {
 	return value, nil
 }
 
-func validateTopUpQuota(amount int64) (int, error) {
-	quota, err := getTopUpQuota(amount)
+func validateTopUpQuota(amount int64, agentId int) (int, error) {
+	quota, err := getTopUpQuota(amount, agentId)
 	if err == nil && quota > 0 {
 		return quota, nil
 	}
@@ -280,7 +273,7 @@ func rejectInvalidCreditedQuota(c *gin.Context, userId int, quota decimal.Decima
 }
 
 func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
-	creditedQuota, err := validateTopUpQuota(amount)
+	creditedQuota, err := validateTopUpQuota(amount, resolveUserAgentId(userId))
 	if err == nil {
 		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
 	}

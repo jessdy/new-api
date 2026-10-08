@@ -63,7 +63,7 @@ func TestTopUpQuotaValidation(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			operation_setting.GetGeneralSetting().QuotaDisplayType = tc.displayType
-			quota, err := getTopUpQuota(tc.amount)
+			quota, err := getTopUpQuota(tc.amount, 0)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -88,9 +88,9 @@ func TestValidateTopUpQuotaReturnsMaximumAmount(t *testing.T) {
 		Div(decimal.NewFromFloat(common.QuotaPerUnit)).
 		Floor().IntPart()
 
-	_, err := validateTopUpQuota(maxAmount)
+	_, err := validateTopUpQuota(maxAmount, 0)
 	require.NoError(t, err)
-	_, err = validateTopUpQuota(maxAmount + 1)
+	_, err = validateTopUpQuota(maxAmount+1, 0)
 	require.EqualError(t, err, fmt.Sprintf("单笔充值数量不能大于 %d", maxAmount))
 }
 
@@ -200,4 +200,27 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"free":0}`))
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
+}
+
+func TestAgentCNYTopUpCreditsTheDisplayedAmount(t *testing.T) {
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldRate := operation_setting.USDExchangeRate
+	common.QuotaPerUnit = 500000
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+	operation_setting.USDExchangeRate = 7
+	t.Cleanup(func() {
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
+		operation_setting.USDExchangeRate = oldRate
+	})
+
+	agentQuota, err := model.QuotaForTopUpAmount(1, 12)
+	require.NoError(t, err)
+	displayed := float64(agentQuota) / common.QuotaPerUnit * operation_setting.USDExchangeRate
+	assert.InDelta(t, 1, displayed, 0.001)
+
+	platformQuota, err := model.QuotaForTopUpAmount(1, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 500000, platformQuota)
 }
