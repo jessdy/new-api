@@ -265,8 +265,10 @@ export interface TopupRecord {
   id: number
   /** User ID */
   user_id: number
-  /** Topup amount (quota) */
+  /** Topup amount. Agent orders are already in the display currency. */
   amount: number
+  /** Owning agent. Zero means a platform order stored in USD units. */
+  agent_id?: number
   /** Payment amount (actual money paid) */
   money: number
   /** Trade/order number */

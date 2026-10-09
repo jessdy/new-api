@@ -17,9 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusBadgeProps } from '@/components/status-badge'
+import {
+  formatCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+  getCurrencyDisplay,
+} from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
 
-import type { TopupStatus } from '../types'
+import type { TopupRecord, TopupStatus } from '../types'
 
 // ============================================================================
 // Billing Utility Functions
@@ -75,6 +80,26 @@ export function getPaymentMethodName(
 ): string {
   const name = PAYMENT_METHOD_NAMES[method] || method
   return t ? t(name) : name
+}
+
+const topupAmountFormat = {
+  digitsLarge: 2,
+  digitsSmall: 2,
+  abbreviate: false,
+}
+
+/**
+ * Agent checkout amounts are already in the display currency.
+ * Platform amounts are USD units and still convert with the exchange rate.
+ */
+export function formatTopupHistoryAmount(
+  record: Pick<TopupRecord, 'amount' | 'agent_id'>
+): string {
+  const { meta } = getCurrencyDisplay()
+  if ((record.agent_id ?? 0) > 0 && meta.kind !== 'tokens') {
+    return formatLocalCurrencyAmount(record.amount, topupAmountFormat)
+  }
+  return formatCurrencyFromUSD(record.amount, topupAmountFormat)
 }
 
 /**
