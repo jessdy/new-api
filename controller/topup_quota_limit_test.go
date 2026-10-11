@@ -222,5 +222,6 @@ func TestAgentCNYTopUpCreditsTheDisplayedAmount(t *testing.T) {
 
 	platformQuota, err := model.QuotaForTopUpAmount(1, 0)
 	require.NoError(t, err)
-	assert.Equal(t, 500000, platformQuota)
+	platformDisplayed := float64(platformQuota) / common.QuotaPerUnit * operation_setting.USDExchangeRate
+	assert.InDelta(t, 1, platformDisplayed, 0.001)
 }

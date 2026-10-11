@@ -62,9 +62,9 @@ func (topUp *TopUp) Insert() error {
 }
 
 // QuotaForTopUpAmount converts a checkout amount into stored quota.
-// Platform amounts are USD units. Agent checkout amounts are already in the
-// quota display currency, so a CNY amount is divided by the USD exchange rate
-// before it is stored. Otherwise ¥1 is credited as $1 and shown as ¥7.
+// Admin and agent checkout amounts are already in the quota display currency,
+// so a CNY amount is divided by the USD exchange rate before it is stored.
+// Otherwise ¥1 is credited as $1 and shown as ¥7.
 func QuotaForTopUpAmount(amount int64, agentId int) (int, error) {
 	if amount <= 0 || common.QuotaPerUnit <= 0 {
 		return 0, ErrInvalidTopUpQuota
@@ -75,11 +75,9 @@ func QuotaForTopUpAmount(amount int64, agentId int) (int, error) {
 		units = decimal.NewFromInt(units.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
 		return common.WalletQuotaFromDecimalStrict(units)
 	}
-	if agentId > 0 {
-		rate := operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
-		if rate > 0 && rate != 1 {
-			units = units.Div(decimal.NewFromFloat(rate))
-		}
+	rate := operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
+	if rate > 0 && rate != 1 {
+		units = units.Div(decimal.NewFromFloat(rate))
 	}
 	return common.WalletQuotaFromDecimalStrict(units.Mul(quotaPerUnit))
 }

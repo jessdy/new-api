@@ -28,22 +28,32 @@ describe('agent preset amounts', () => {
       platformPrice: 7.3,
       exchangeRate: 7,
     })
-    const priced = calculatePresetPricing(100, quote.priceRatio, 1, quote.exchangeRate)
+    const priced = calculatePresetPricing(
+      100,
+      quote.priceRatio,
+      1,
+      quote.exchangeRate
+    )
 
     expect(priced.displayValue).toBe(100)
     expect(priced.actualPrice).toBe(100)
   })
 
-  test('keeps platform presets in USD converted by the display rate', () => {
+  test('shows the configured amount and the admin unit price', () => {
     const quote = resolvePresetQuoteInputs({
       agentId: 0,
       unitPrice: 1,
-      platformPrice: 7.3,
+      platformPrice: 1,
       exchangeRate: 7,
     })
-    const priced = calculatePresetPricing(100, quote.priceRatio, 1, quote.exchangeRate)
+    const priced = calculatePresetPricing(
+      100,
+      quote.priceRatio,
+      1,
+      quote.exchangeRate
+    )
 
-    expect(priced.displayValue).toBe(700)
-    expect(priced.actualPrice).toBe(730)
+    expect(priced.displayValue).toBe(100)
+    expect(priced.actualPrice).toBe(100)
   })
 })

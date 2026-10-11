@@ -47,7 +47,7 @@ describe('formatTopupHistoryAmount', () => {
     expect(formatTopupHistoryAmount({ amount: 1, agent_id: 12 })).toBe('¥1')
   })
 
-  it('converts a platform recharge from USD into the display currency', () => {
-    expect(formatTopupHistoryAmount({ amount: 1, agent_id: 0 })).toBe('¥7')
+  it('shows an admin recharge in yuan without applying the exchange rate again', () => {
+    expect(formatTopupHistoryAmount({ amount: 1, agent_id: 0 })).toBe('¥1')
   })
 })

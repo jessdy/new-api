@@ -89,14 +89,14 @@ const topupAmountFormat = {
 }
 
 /**
- * Agent checkout amounts are already in the display currency.
- * Platform amounts are USD units and still convert with the exchange rate.
+ * Checkout amounts are already in the display currency.
+ * Token display still converts the stored amount.
  */
 export function formatTopupHistoryAmount(
   record: Pick<TopupRecord, 'amount' | 'agent_id'>
 ): string {
   const { meta } = getCurrencyDisplay()
-  if ((record.agent_id ?? 0) > 0 && meta.kind !== 'tokens') {
+  if (meta.kind !== 'tokens') {
     return formatLocalCurrencyAmount(record.amount, topupAmountFormat)
   }
   return formatCurrencyFromUSD(record.amount, topupAmountFormat)

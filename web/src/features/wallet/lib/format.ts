@@ -73,8 +73,8 @@ export function getDiscountLabel(discount: number): string {
 }
 
 /**
- * Agent amount options are already in the checkout currency.
- * Platform presets stay in system USD and convert with the display rate.
+ * Checkout amount options are already in the display currency.
+ * The exchange rate is not applied again. Payment uses the channel unit price.
  */
 export function resolvePresetQuoteInputs(input: {
   agentId?: number
@@ -90,7 +90,7 @@ export function resolvePresetQuoteInputs(input: {
   }
   return {
     priceRatio: input.platformPrice || 1,
-    exchangeRate: input.exchangeRate || 1,
+    exchangeRate: 1,
   }
 }
 
