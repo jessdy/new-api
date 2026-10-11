@@ -94,7 +94,9 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
-			strings.HasSuffix(k, "api_key")
+			strings.HasSuffix(k, "api_key") ||
+			k == "payment_setting.alipay_private_key" ||
+			k == "payment_setting.alipay_public_key"
 		if isSensitiveKey {
 			continue
 		}
@@ -124,6 +126,23 @@ func GetOptions(c *gin.Context) {
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
+	payment := operation_setting.GetPaymentSetting()
+	options = append(options,
+		&model.Option{
+			Key:   "payment_setting.alipay_private_key_set",
+			Value: strconv.FormatBool(strings.TrimSpace(payment.AlipayPrivateKey) != ""),
+		},
+		&model.Option{
+			Key:   "payment_setting.alipay_public_key_set",
+			Value: strconv.FormatBool(strings.TrimSpace(payment.AlipayPublicKey) != ""),
+		},
+	)
+	if appPublic, err := service.EncodeAlipayAppPublicKey(payment.AlipayPrivateKey); err == nil && appPublic != "" {
+		options = append(options, &model.Option{
+			Key:   "payment_setting.alipay_app_public_key",
+			Value: appPublic,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

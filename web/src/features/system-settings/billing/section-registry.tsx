@@ -143,6 +143,11 @@ const BILLING_SECTIONS = [
           PayMethods: settings.PayMethods,
           AmountOptions: settings['payment_setting.amount_options'],
           AmountDiscount: settings['payment_setting.amount_discount'],
+          AlipayEnabled: settings['payment_setting.alipay_enabled'] ?? false,
+          AlipayAppId: settings['payment_setting.alipay_app_id'] ?? '',
+          AlipayPrivateKey: '',
+          AlipayPublicKey: '',
+          AlipaySandbox: settings['payment_setting.alipay_sandbox'] ?? false,
           StripeApiSecret: settings.StripeApiSecret,
           StripeWebhookSecret: settings.StripeWebhookSecret,
           StripePriceId: settings.StripePriceId,
@@ -184,6 +189,13 @@ const BILLING_SECTIONS = [
             settings['payment_setting.compliance_terms_version'] ?? '',
           confirmedAt: settings['payment_setting.compliance_confirmed_at'] ?? 0,
           confirmedBy: settings['payment_setting.compliance_confirmed_by'] ?? 0,
+        }}
+        alipayCredentialHints={{
+          appPublicKey: settings['payment_setting.alipay_app_public_key'] ?? '',
+          privateKeySet:
+            settings['payment_setting.alipay_private_key_set'] ?? false,
+          publicKeySet:
+            settings['payment_setting.alipay_public_key_set'] ?? false,
         }}
       />
     ),

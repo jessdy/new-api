@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { CopyButton } from '@/components/copy-button'
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { RiskAcknowledgementDialog } from '@/components/risk-acknowledgement-dialog'
 import {
@@ -44,8 +45,10 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
@@ -148,6 +151,11 @@ const paymentSchema = z.object({
   StripeUnitPrice: z.coerce.number().min(0),
   StripeMinTopUp: z.coerce.number().min(0),
   StripePromotionCodesEnabled: z.boolean(),
+  AlipayEnabled: z.boolean(),
+  AlipayAppId: z.string(),
+  AlipayPrivateKey: z.string(),
+  AlipayPublicKey: z.string(),
+  AlipaySandbox: z.boolean(),
   CreemApiKey: z.string(),
   CreemWebhookSecret: z.string(),
   CreemTestMode: z.boolean(),
@@ -196,6 +204,12 @@ type PaymentComplianceDefaults = {
   confirmedBy: number
 }
 
+type AlipayCredentialHints = {
+  appPublicKey: string
+  privateKeySet: boolean
+  publicKeySet: boolean
+}
+
 type PaymentSettingsSectionProps = {
   defaultValues: PaymentBaseFormValues
   waffoDefaultValues: WaffoSettingsValues
@@ -203,6 +217,7 @@ type PaymentSettingsSectionProps = {
   waffoPancakeProvisionedStoreID?: string
   waffoPancakeProvisionedProductID?: string
   complianceDefaults: PaymentComplianceDefaults
+  alipayCredentialHints: AlipayCredentialHints
 }
 
 function parseWaffoPayMethods(value: string): PayMethod[] {
@@ -221,6 +236,7 @@ export function PaymentSettingsSection({
   waffoPancakeProvisionedStoreID,
   waffoPancakeProvisionedProductID,
   complianceDefaults,
+  alipayCredentialHints,
 }: PaymentSettingsSectionProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -361,6 +377,10 @@ export function PaymentSettingsSection({
   })
 
   const { isSubmitting } = form.formState
+  const customCallbackAddress = form.watch('CustomCallbackAddress')
+  const alipayNotifyBase =
+    customCallbackAddress.trim() || window.location.origin
+  const alipayNotifyUrl = `${alipayNotifyBase.replace(/\/$/, '')}/api/alipay/notify`
 
   const setPaymentValue = React.useCallback(
     (
@@ -434,6 +454,11 @@ export function PaymentSettingsSection({
       StripeUnitPrice: values.StripeUnitPrice,
       StripeMinTopUp: values.StripeMinTopUp,
       StripePromotionCodesEnabled: values.StripePromotionCodesEnabled,
+      AlipayEnabled: values.AlipayEnabled,
+      AlipayAppId: values.AlipayAppId.trim(),
+      AlipayPrivateKey: values.AlipayPrivateKey.trim(),
+      AlipayPublicKey: values.AlipayPublicKey.trim(),
+      AlipaySandbox: values.AlipaySandbox,
       CreemApiKey: values.CreemApiKey.trim(),
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode,
@@ -479,6 +504,11 @@ export function PaymentSettingsSection({
       StripeMinTopUp: initialRef.current.StripeMinTopUp,
       StripePromotionCodesEnabled:
         initialRef.current.StripePromotionCodesEnabled,
+      AlipayEnabled: initialRef.current.AlipayEnabled,
+      AlipayAppId: initialRef.current.AlipayAppId.trim(),
+      AlipayPrivateKey: initialRef.current.AlipayPrivateKey.trim(),
+      AlipayPublicKey: initialRef.current.AlipayPublicKey.trim(),
+      AlipaySandbox: initialRef.current.AlipaySandbox,
       CreemApiKey: initialRef.current.CreemApiKey.trim(),
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
@@ -599,6 +629,47 @@ export function PaymentSettingsSection({
       updates.push({
         key: 'StripePromotionCodesEnabled',
         value: sanitized.StripePromotionCodesEnabled,
+      })
+    }
+
+    if (sanitized.AlipayEnabled !== initial.AlipayEnabled) {
+      updates.push({
+        key: 'payment_setting.alipay_enabled',
+        value: sanitized.AlipayEnabled,
+      })
+    }
+
+    if (sanitized.AlipayAppId !== initial.AlipayAppId) {
+      updates.push({
+        key: 'payment_setting.alipay_app_id',
+        value: sanitized.AlipayAppId,
+      })
+    }
+
+    if (
+      sanitized.AlipayPrivateKey &&
+      sanitized.AlipayPrivateKey !== initial.AlipayPrivateKey
+    ) {
+      updates.push({
+        key: 'payment_setting.alipay_private_key',
+        value: sanitized.AlipayPrivateKey,
+      })
+    }
+
+    if (
+      sanitized.AlipayPublicKey &&
+      sanitized.AlipayPublicKey !== initial.AlipayPublicKey
+    ) {
+      updates.push({
+        key: 'payment_setting.alipay_public_key',
+        value: sanitized.AlipayPublicKey,
+      })
+    }
+
+    if (sanitized.AlipaySandbox !== initial.AlipaySandbox) {
+      updates.push({
+        key: 'payment_setting.alipay_sandbox',
+        value: sanitized.AlipaySandbox,
       })
     }
 
@@ -879,9 +950,10 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[52rem] grid-cols-7'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
+                <TabsTrigger value='alipay'>{t('Alipay')}</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
@@ -1252,6 +1324,176 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value='alipay' className={paymentTabContentClassName}>
+              <div className='space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>{t('Alipay')}</h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Users who are not under an agent pay with this official Alipay account.'
+                    )}
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name='AlipayEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Enable official Alipay')}</FormLabel>
+                        <FormDescription>
+                          {t('Accept payments through Alipay Open Platform.')}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='AlipayAppId'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Alipay App ID')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='2021...'
+                          autoComplete='off'
+                          {...field}
+                        />
+                      </FormControl>
+                      {form.watch('AlipayEnabled') && !field.value.trim() && (
+                        <FormDescription>
+                          {t(
+                            'Alipay App ID is required. Saving without it disables checkout.'
+                          )}
+                        </FormDescription>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='AlipayPrivateKey'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('Alipay application private key')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Paste the application private key from Alipay Open Platform. Java (PKCS8) and non-Java (PKCS1) formats are both accepted. Upload the matching application public key in the Alipay console; do not paste the application public key here.'
+                        )}
+                      </FormDescription>
+                      <FormControl>
+                        <Textarea
+                          placeholder={
+                            alipayCredentialHints.privateKeySet
+                              ? t('Leave empty to keep existing key')
+                              : '-----BEGIN RSA PRIVATE KEY-----'
+                          }
+                          className='font-mono text-xs'
+                          autoComplete='off'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {alipayCredentialHints.appPublicKey && (
+                  <div className='space-y-2'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <Label>{t('Alipay application public key')}</Label>
+                      <CopyButton
+                        value={alipayCredentialHints.appPublicKey}
+                        tooltip={t('Copy to clipboard')}
+                      />
+                    </div>
+                    <p className='text-muted-foreground text-sm'>
+                      {t(
+                        'Upload this exact application public key in the Alipay Open Platform console for this App ID. Invalid signature usually means the console has a different key.'
+                      )}
+                    </p>
+                    <Textarea
+                      readOnly
+                      value={alipayCredentialHints.appPublicKey}
+                      className='font-mono text-xs'
+                    />
+                  </div>
+                )}
+
+                <FormField
+                  control={form.control}
+                  name='AlipayPublicKey'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Alipay public key')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Paste the Alipay public key issued after you upload the application public key. Do not paste the application public key.'
+                        )}
+                      </FormDescription>
+                      <FormControl>
+                        <Textarea
+                          placeholder={
+                            alipayCredentialHints.publicKeySet
+                              ? t('Leave empty to keep existing key')
+                              : '-----BEGIN PUBLIC KEY-----'
+                          }
+                          className='font-mono text-xs'
+                          autoComplete='off'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className='space-y-2'>
+                  <Label>{t('Alipay notify URL')}</Label>
+                  <Input readOnly value={alipayNotifyUrl} />
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Configure this URL as the Alipay async notification address.'
+                    )}
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name='AlipaySandbox'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Use Alipay sandbox')}</FormLabel>
+                        <FormDescription>
+                          {t('Use the Alipay sandbox gateway for testing.')}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
               </div>
             </TabsContent>
 

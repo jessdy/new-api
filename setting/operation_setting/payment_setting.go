@@ -1,6 +1,10 @@
 package operation_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 type PaymentSetting struct {
 	AmountOptions  []int           `json:"amount_options"`
@@ -11,6 +15,12 @@ type PaymentSetting struct {
 	ComplianceConfirmedAt  int64  `json:"compliance_confirmed_at"`
 	ComplianceConfirmedBy  int    `json:"compliance_confirmed_by"`
 	ComplianceConfirmedIP  string `json:"compliance_confirmed_ip"`
+
+	AlipayEnabled    bool   `json:"alipay_enabled"`
+	AlipayAppId      string `json:"alipay_app_id"`
+	AlipayPrivateKey string `json:"alipay_private_key"`
+	AlipayPublicKey  string `json:"alipay_public_key"`
+	AlipaySandbox    bool   `json:"alipay_sandbox"`
 }
 
 const CurrentComplianceTermsVersion = "v1"
@@ -33,4 +43,14 @@ func GetPaymentSetting() *PaymentSetting {
 func IsPaymentComplianceConfirmed() bool {
 	return paymentSetting.ComplianceConfirmed &&
 		paymentSetting.ComplianceTermsVersion == CurrentComplianceTermsVersion
+}
+
+func (s *PaymentSetting) AlipayConfigured() bool {
+	if s == nil {
+		return false
+	}
+	return s.AlipayEnabled &&
+		strings.TrimSpace(s.AlipayAppId) != "" &&
+		strings.TrimSpace(s.AlipayPrivateKey) != "" &&
+		strings.TrimSpace(s.AlipayPublicKey) != ""
 }

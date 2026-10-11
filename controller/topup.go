@@ -59,20 +59,7 @@ func GetTopUpInfo(c *gin.Context) {
 				}
 				if complianceConfirmed && cfg.AlipayConfigured() {
 					enableOnlineTopup = true
-					hasNativeAlipay := false
-					for _, method := range payMethods {
-						if method["type"] == model.PaymentMethodAlipayNative {
-							hasNativeAlipay = true
-							break
-						}
-					}
-					if !hasNativeAlipay {
-						payMethods = append(payMethods, map[string]string{
-							"name":  "Alipay",
-							"type":  model.PaymentMethodAlipayNative,
-							"color": "#1677FF",
-						})
-					}
+					payMethods = withNativeAlipayMethod(payMethods)
 				}
 			}
 		}
@@ -82,6 +69,10 @@ func GetTopUpInfo(c *gin.Context) {
 			payMethods = []map[string]string{}
 		}
 		enableOnlineTopup = isEpayTopUpEnabled()
+		if complianceConfirmed && operation_setting.GetPaymentSetting().AlipayConfigured() {
+			enableOnlineTopup = true
+			payMethods = withNativeAlipayMethod(payMethods)
+		}
 		enableStripe = isStripeTopUpEnabled()
 		enableWaffoPancake = isWaffoPancakeTopUpEnabled()
 		enableWaffo = isWaffoTopUpEnabled()

@@ -1,8 +1,14 @@
 package controller
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
@@ -166,4 +172,59 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
+}
+
+func TestPlatformAlipayGatewayServesUsersWithoutAgent(t *testing.T) {
+	payment := operation_setting.GetPaymentSetting()
+	original := *payment
+	t.Cleanup(func() {
+		*payment = original
+	})
+
+	payment.AlipayEnabled = false
+	payment.AlipayAppId = ""
+	payment.AlipayPrivateKey = ""
+	payment.AlipayPublicKey = ""
+	gateway, err := resolvePlatformAlipayGateway()
+	require.NoError(t, err)
+	require.False(t, gateway.Enabled)
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	privatePEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+	publicDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+	publicPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER})
+
+	payment.AlipayEnabled = true
+	payment.AlipayAppId = "2021000000000001"
+	payment.AlipayPrivateKey = string(privatePEM)
+	payment.AlipayPublicKey = string(publicPEM)
+	payment.AlipaySandbox = true
+
+	gateway, err = resolvePlatformAlipayGateway()
+	require.NoError(t, err)
+	require.True(t, gateway.Enabled)
+	require.Equal(t, 0, gateway.AgentId)
+	require.Equal(t, service.AlipayGatewaySandbox, gateway.Client.Gateway())
+
+	topUpGateway, err := resolveAlipayGatewayForTopUp(&model.TopUp{AgentId: 0})
+	require.NoError(t, err)
+	require.True(t, topUpGateway.Enabled)
+	require.Equal(t, 0, topUpGateway.AgentId)
+}
+
+func TestWithNativeAlipayMethodDoesNotMutateExistingMethods(t *testing.T) {
+	original := []map[string]string{{"type": "wxpay", "name": "WeChat"}}
+	next := withNativeAlipayMethod(original)
+	require.Len(t, original, 1)
+	require.Equal(t, model.PaymentMethodAlipayNative, next[1]["type"])
+	require.Equal(t, "Alipay", next[1]["name"])
+
+	again := withNativeAlipayMethod(next)
+	require.Len(t, again, 2)
+	require.Equal(t, next, again)
 }

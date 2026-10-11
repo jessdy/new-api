@@ -256,10 +256,22 @@ func resolveStripeGatewayForAgent(agentId int) (*resolvedStripeGateway, error) {
 
 func resolveAlipayGatewayForUser(userId int) (*resolvedAlipayGateway, error) {
 	agentId := resolveUserAgentId(userId)
-	if agentId <= 0 {
+	if agentId > 0 {
+		return resolveAlipayGatewayForAgent(agentId)
+	}
+	return resolvePlatformAlipayGateway()
+}
+
+func resolvePlatformAlipayGateway() (*resolvedAlipayGateway, error) {
+	cfg := operation_setting.GetPaymentSetting()
+	if !cfg.AlipayConfigured() {
 		return &resolvedAlipayGateway{Enabled: false}, nil
 	}
-	return resolveAlipayGatewayForAgent(agentId)
+	client, err := service.NewAlipayClient(cfg.AlipayAppId, cfg.AlipayPrivateKey, cfg.AlipayPublicKey, cfg.AlipaySandbox)
+	if err != nil {
+		return nil, err
+	}
+	return &resolvedAlipayGateway{Client: client, Enabled: true, AgentId: 0}, nil
 }
 
 func resolveAlipayGatewayForAgent(agentId int) (*resolvedAlipayGateway, error) {
@@ -288,7 +300,25 @@ func resolveAlipayGatewayForTopUp(topUp *model.TopUp) (*resolvedAlipayGateway, e
 	if topUp == nil {
 		return nil, nil
 	}
-	return resolveAlipayGatewayForAgent(topUp.AgentId)
+	if topUp.AgentId > 0 {
+		return resolveAlipayGatewayForAgent(topUp.AgentId)
+	}
+	return resolvePlatformAlipayGateway()
+}
+
+func withNativeAlipayMethod(methods []map[string]string) []map[string]string {
+	for _, method := range methods {
+		if method["type"] == model.PaymentMethodAlipayNative {
+			return methods
+		}
+	}
+	next := make([]map[string]string, len(methods), len(methods)+1)
+	copy(next, methods)
+	return append(next, map[string]string{
+		"name":  "Alipay",
+		"type":  model.PaymentMethodAlipayNative,
+		"color": "#1677FF",
+	})
 }
 
 // topUpUnitPrice is the charge for one top-up unit before preset discounts.
