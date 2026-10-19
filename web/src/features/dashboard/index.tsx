@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Eye, EyeOff } from 'lucide-react'
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { KeyUsageTable } from './components/keys/key-usage-table'
+import { MemberUsageTable } from './components/members/member-usage-table'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
@@ -222,6 +223,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   keys: {
     titleKey: 'Usage by Key',
   },
+  members: {
+    titleKey: 'Usage by User',
+  },
   flow: {
     titleKey: 'Flow',
   },
@@ -297,11 +301,23 @@ export function Dashboard() {
   const isAgent = userRole === ROLE.AGENT
   const visibleSections = useMemo(
     () =>
-      DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
-      ),
-    [isAdmin]
+      DASHBOARD_SECTION_IDS.filter((section) => {
+        if (section === 'overview') return false
+        if (section === 'users' && !isAdmin) return false
+        if (section === 'members' && !isAgent) return false
+        return true
+      }),
+    [isAdmin, isAgent]
   )
+  useEffect(() => {
+    if (userRole == null) return
+    if (activeSection === 'members' && !isAgent) {
+      void navigate({
+        to: '/dashboard/$section',
+        params: { section: 'models' },
+      })
+    }
+  }, [activeSection, isAgent, navigate, userRole])
   const handleSectionChange = useCallback(
     (section: string) => {
       void navigate({
@@ -389,7 +405,19 @@ export function Dashboard() {
         descriptionKey='Filter usage by time range.'
       />
     ) : null
-  const sectionActions = modelActions ?? keyActions ?? flowActions
+  const memberActions =
+    activeSection === 'members' && isAgent ? (
+      <ModelsFilter
+        preferences={chartPreferences}
+        currentFilters={modelFilters}
+        onFilterChange={handleFilterChange}
+        onReset={handleResetFilters}
+        timeOnly
+        titleKey='Usage by User'
+        descriptionKey='Filter usage by time range.'
+      />
+    ) : null
+  const sectionActions = modelActions ?? keyActions ?? memberActions ?? flowActions
 
   if (activeSection === 'overview') {
     return <OverviewDashboard />
@@ -489,6 +517,11 @@ export function Dashboard() {
           {activeSection === 'keys' && (
             <FadeIn>
               <KeyUsageTable filters={modelFilters} />
+            </FadeIn>
+          )}
+          {activeSection === 'members' && isAgent && (
+            <FadeIn>
+              <MemberUsageTable filters={modelFilters} />
             </FadeIn>
           )}
           {activeSection === 'users' && (

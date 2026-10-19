@@ -332,6 +332,111 @@ func GetQuotaDataByAgentId(agentId int, startTime int64, endTime int64) ([]*Quot
 	return quotaDatas, err
 }
 
+// AgentUserModelUsage is one downstream user and the models they used.
+// Users with no calls in the range are included with an empty model list.
+type AgentUserModelUsage struct {
+	UserID   int               `json:"user_id"`
+	Username string            `json:"username"`
+	Deleted  bool              `json:"deleted"`
+	Models   []TokenModelUsage `json:"models"`
+}
+
+// GetAgentUserModelUsage aggregates quota_data for users registered under an
+// agent, grouped by user and model.
+func GetAgentUserModelUsage(agentId int, startTime int64, endTime int64) ([]AgentUserModelUsage, error) {
+	if agent, err := GetAgentById(agentId); err == nil {
+		if err := AttachInvitedUsersToAgent(agent); err != nil {
+			return nil, err
+		}
+	}
+	startTime = alignHourlyStart(startTime)
+	type usageRow struct {
+		UserID           int    `gorm:"column:user_id"`
+		ModelName        string `gorm:"column:model_name"`
+		Count            int    `gorm:"column:count"`
+		PromptTokens     int    `gorm:"column:prompt_tokens"`
+		CompletionTokens int    `gorm:"column:completion_tokens"`
+		CacheTokens      int    `gorm:"column:cache_tokens"`
+		Quota            int    `gorm:"column:quota"`
+	}
+	var rows []usageRow
+	err := DB.Table("quota_data").
+		Select("quota_data.user_id as user_id, quota_data.model_name as model_name, sum(quota_data.count) as count, sum(quota_data.prompt_tokens) as prompt_tokens, sum(quota_data.completion_tokens) as completion_tokens, sum(quota_data.cache_tokens) as cache_tokens, sum(quota_data.quota) as quota").
+		Joins("INNER JOIN users ON users.id = quota_data.user_id").
+		Where("users.agent_id = ? AND quota_data.created_at >= ? AND quota_data.created_at <= ?", agentId, startTime, endTime).
+		Group("quota_data.user_id, quota_data.model_name").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var users []User
+	if err := DB.Select("id, username").Where("agent_id = ?", agentId).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	byUser := make(map[int]*AgentUserModelUsage, len(users))
+	for _, user := range users {
+		byUser[user.Id] = &AgentUserModelUsage{
+			UserID:   user.Id,
+			Username: user.Username,
+			Models:   []TokenModelUsage{},
+		}
+	}
+	var missingIDs []int
+	for _, row := range rows {
+		item, ok := byUser[row.UserID]
+		if !ok {
+			item = &AgentUserModelUsage{
+				UserID:  row.UserID,
+				Deleted: true,
+				Models:  []TokenModelUsage{},
+			}
+			byUser[row.UserID] = item
+			missingIDs = append(missingIDs, row.UserID)
+		}
+		item.Models = append(item.Models, TokenModelUsage{
+			ModelName:        row.ModelName,
+			Count:            row.Count,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			CacheTokens:      row.CacheTokens,
+			Quota:            row.Quota,
+		})
+	}
+	if len(missingIDs) > 0 {
+		var named []User
+		if err := DB.Unscoped().Select("id, username").Where("id IN ? AND agent_id = ?", missingIDs, agentId).Find(&named).Error; err != nil {
+			return nil, err
+		}
+		for _, user := range named {
+			if item := byUser[user.Id]; item != nil {
+				item.Username = user.Username
+			}
+		}
+	}
+
+	result := make([]AgentUserModelUsage, 0, len(byUser))
+	for _, item := range byUser {
+		slices.SortFunc(item.Models, func(a, b TokenModelUsage) int {
+			if c := cmp.Compare(b.Count, a.Count); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(b.Quota, a.Quota); c != 0 {
+				return c
+			}
+			return strings.Compare(a.ModelName, b.ModelName)
+		})
+		result = append(result, *item)
+	}
+	slices.SortFunc(result, func(a, b AgentUserModelUsage) int {
+		if c := strings.Compare(a.Username, b.Username); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.UserID, b.UserID)
+	})
+	return result, nil
+}
+
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	err = DB.Table("quota_data").

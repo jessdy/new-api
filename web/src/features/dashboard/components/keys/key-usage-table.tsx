@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import { KeyRound } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -27,11 +27,14 @@ import {
   staticDataTableClassNames,
   type StaticDataTableColumn,
 } from '@/components/data-table'
+import { Dialog } from '@/components/dialog'
+import { Button } from '@/components/ui/button'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { getUserTokenModelUsage } from '@/features/dashboard/api'
 import { getDashboardQueryTimeRange } from '@/features/dashboard/lib/filters'
 import type {
   DashboardFilters,
+  TokenModelUsageItem,
   UserTokenUsageItem,
 } from '@/features/dashboard/types'
 import { formatNumber, formatQuota } from '@/lib/format'
@@ -46,12 +49,12 @@ interface KeyUsageRow {
   rowKey: string
   tokenLabel: string
   deleted: boolean
-  modelName: string
   callCount: number
   promptTokens: number
   completionTokens: number
   cacheTokens: number
   quota: number
+  models: TokenModelUsageItem[]
 }
 
 function tokenLabel(item: UserTokenUsageItem, t: TFunction) {
@@ -61,43 +64,121 @@ function tokenLabel(item: UserTokenUsageItem, t: TFunction) {
 }
 
 function usageRows(items: UserTokenUsageItem[], t: TFunction): KeyUsageRow[] {
-  const rows: KeyUsageRow[] = []
-  for (const item of items) {
-    const label = tokenLabel(item, t)
+  return items.map((item) => {
     const models = item.models ?? []
-    if (models.length === 0) {
-      rows.push({
-        rowKey: `${item.token_id}:empty`,
-        tokenLabel: label,
-        deleted: item.deleted,
-        modelName: '—',
-        callCount: 0,
-        promptTokens: 0,
-        completionTokens: 0,
-        cacheTokens: 0,
-        quota: 0,
-      })
-      continue
-    }
+    let callCount = 0
+    let promptTokens = 0
+    let completionTokens = 0
+    let cacheTokens = 0
+    let quota = 0
     for (const model of models) {
-      rows.push({
-        rowKey: `${item.token_id}:${model.model_name}`,
-        tokenLabel: label,
-        deleted: item.deleted,
-        modelName: model.model_name || '—',
-        callCount: model.count,
-        promptTokens: model.prompt_tokens,
-        completionTokens: model.completion_tokens,
-        cacheTokens: model.cache_tokens,
-        quota: model.quota,
-      })
+      callCount += model.count
+      promptTokens += model.prompt_tokens
+      completionTokens += model.completion_tokens
+      cacheTokens += model.cache_tokens
+      quota += model.quota
     }
-  }
-  return rows
+    return {
+      rowKey: String(item.token_id),
+      tokenLabel: tokenLabel(item, t),
+      deleted: item.deleted,
+      callCount,
+      promptTokens,
+      completionTokens,
+      cacheTokens,
+      quota,
+      models,
+    }
+  })
+}
+
+function KeyModelDetailsDialog(props: {
+  row: KeyUsageRow
+  onOpenChange: (open: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const columns = useMemo<StaticDataTableColumn<TokenModelUsageItem>[]>(
+    () => [
+      {
+        id: 'model',
+        header: t('Model'),
+        cell: (model) => (
+          <div className='flex min-w-40 items-center gap-2.5'>
+            <span className='flex size-6 shrink-0 items-center justify-center'>
+              {model.model_name ? getLobeIcon(model.model_name, 24) : null}
+            </span>
+            <span className='font-mono text-sm break-all'>
+              {model.model_name || '—'}
+            </span>
+          </div>
+        ),
+      },
+      {
+        id: 'calls',
+        header: t('Call Count'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (model) => formatNumber(model.count),
+      },
+      {
+        id: 'input',
+        header: t('Input Tokens'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (model) => formatNumber(model.prompt_tokens),
+      },
+      {
+        id: 'output',
+        header: t('Output Tokens'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (model) => formatNumber(model.completion_tokens),
+      },
+      {
+        id: 'cache',
+        header: t('Cache Tokens'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (model) => formatNumber(model.cache_tokens),
+      },
+      {
+        id: 'billing',
+        header: t('Billing'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (model) => (
+          <span className='font-semibold tabular-nums'>
+            {formatQuota(model.quota)}
+          </span>
+        ),
+      },
+    ],
+    [t]
+  )
+
+  return (
+    <Dialog
+      open
+      onOpenChange={props.onOpenChange}
+      title={props.row.tokenLabel}
+      description={t('Model Usage')}
+      contentClassName='sm:max-w-4xl'
+    >
+      <StaticDataTable
+        columns={columns}
+        data={props.row.models}
+        getRowKey={(model) => model.model_name || '—'}
+        empty={props.row.models.length === 0}
+        emptyContent={t('No data')}
+        headerRowClassName={staticDataTableClassNames.mutedHeaderRow}
+      />
+    </Dialog>
+  )
 }
 
 export function KeyUsageTable(props: KeyUsageTableProps) {
   const { t } = useTranslation()
+  const [detailRow, setDetailRow] = useState<KeyUsageRow | null>(null)
   const timeRange = getDashboardQueryTimeRange(props.filters)
   const query = useQuery({
     queryKey: ['dashboard', 'token-usage', timeRange],
@@ -121,18 +202,14 @@ export function KeyUsageTable(props: KeyUsageTableProps) {
                 {t('Deleted key')}
               </span>
             ) : null}
-          </div>
-        ),
-      },
-      {
-        id: 'model',
-        header: t('Model'),
-        cell: (row) => (
-          <div className='flex min-w-40 items-center gap-2.5'>
-            <span className='flex size-6 shrink-0 items-center justify-center'>
-              {row.modelName === '—' ? null : getLobeIcon(row.modelName, 24)}
-            </span>
-            <span className='font-mono text-sm break-all'>{row.modelName}</span>
+            <Button
+              variant='link'
+              size='sm'
+              className='h-auto shrink-0 p-0'
+              onClick={() => setDetailRow(row)}
+            >
+              {t('Breakdown')}
+            </Button>
           </div>
         ),
       },
@@ -200,6 +277,15 @@ export function KeyUsageTable(props: KeyUsageTableProps) {
         emptyContent={emptyContent}
         headerRowClassName={staticDataTableClassNames.mutedHeaderRow}
       />
+      {detailRow ? (
+        <KeyModelDetailsDialog
+          key={detailRow.rowKey}
+          row={detailRow}
+          onOpenChange={(open) => {
+            if (!open) setDetailRow(null)
+          }}
+        />
+      ) : null}
     </section>
   )
 }

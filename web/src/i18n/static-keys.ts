@@ -539,6 +539,7 @@ export const STATIC_I18N_KEYS = [
   'System data statistics',
   'Flow',
   'Usage by Key',
+  'Usage by User',
   'Filter usage by time range.',
   'Flow Filters',
   'Filter the traffic flow view by time range and user.',

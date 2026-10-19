@@ -400,3 +400,68 @@ func TestGetUserTokenModelUsage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, empty)
 }
+
+func TestGetAgentUserModelUsage(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.AutoMigrate(&QuotaData{}))
+
+	agent := &Agent{
+		UserId: 101, Name: "agent-a", InviteCode: "agenta", Status: AgentStatusEnabled,
+	}
+	require.NoError(t, CreateAgent(agent))
+	start := int64(1_700_006_400)
+	end := start + 7200
+
+	require.NoError(t, DB.Create(&User{
+		Id: 101, Username: "owner", Password: "x", Role: common.RoleAgentUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "owner", AgentId: 0,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 201, Username: "alpha", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "alpha", AgentId: agent.Id,
+	}).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 202, Username: "beta", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "beta", AgentId: agent.Id,
+	}).Error)
+	deleted := &User{
+		Id: 203, Username: "gone", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "gone", AgentId: agent.Id,
+	}
+	require.NoError(t, DB.Create(deleted).Error)
+	require.NoError(t, DB.Delete(deleted).Error)
+	require.NoError(t, DB.Create(&User{
+		Id: 204, Username: "other", Password: "x", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AffCode: "other", AgentId: agent.Id + 1,
+	}).Error)
+
+	rows := []QuotaData{
+		{UserID: 201, Username: "alpha", ModelName: "gpt-4o", CreatedAt: start, Count: 2, PromptTokens: 10, CompletionTokens: 4, CacheTokens: 1, Quota: 20},
+		{UserID: 201, Username: "alpha", ModelName: "gpt-4o", CreatedAt: start + 3600, Count: 3, PromptTokens: 30, CompletionTokens: 6, CacheTokens: 2, Quota: 40},
+		{UserID: 201, Username: "alpha", ModelName: "claude", CreatedAt: start, Count: 1, PromptTokens: 5, CompletionTokens: 1, Quota: 8},
+		{UserID: 203, Username: "gone", ModelName: "gpt-4o", CreatedAt: start, Count: 4, PromptTokens: 7, CompletionTokens: 2, CacheTokens: 3, Quota: 15},
+		{UserID: 101, Username: "owner", ModelName: "gpt-4o", CreatedAt: start, Count: 9, PromptTokens: 90, CompletionTokens: 9, CacheTokens: 9, Quota: 90},
+		{UserID: 204, Username: "other", ModelName: "gpt-4o", CreatedAt: start, Count: 6, PromptTokens: 60, CompletionTokens: 6, CacheTokens: 6, Quota: 60},
+		{UserID: 201, Username: "alpha", ModelName: "gpt-4o", CreatedAt: start - 3600, Count: 8, PromptTokens: 80, CompletionTokens: 8, CacheTokens: 8, Quota: 80},
+	}
+	require.NoError(t, DB.Create(&rows).Error)
+
+	usage, err := GetAgentUserModelUsage(agent.Id, start+100, end)
+	require.NoError(t, err)
+	require.Equal(t, []AgentUserModelUsage{
+		{
+			UserID: 201, Username: "alpha",
+			Models: []TokenModelUsage{
+				{ModelName: "gpt-4o", Count: 5, PromptTokens: 40, CompletionTokens: 10, CacheTokens: 3, Quota: 60},
+				{ModelName: "claude", Count: 1, PromptTokens: 5, CompletionTokens: 1, CacheTokens: 0, Quota: 8},
+			},
+		},
+		{UserID: 202, Username: "beta", Models: []TokenModelUsage{}},
+		{
+			UserID: 203, Username: "gone", Deleted: true,
+			Models: []TokenModelUsage{
+				{ModelName: "gpt-4o", Count: 4, PromptTokens: 7, CompletionTokens: 2, CacheTokens: 3, Quota: 15},
+			},
+		},
+	}, usage)
+}

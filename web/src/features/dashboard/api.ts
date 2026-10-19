@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   AgentQuotaDataItem,
+  AgentUserModelUsageItem,
   FlowQuotaDataItem,
   QuotaDataItem,
   UserTokenUsageItem,
@@ -68,6 +69,18 @@ export async function getUserTokenModelUsage(params: {
     message?: string
     data: UserTokenUsageItem[]
   }>('/api/data/self/tokens', { params })
+  return res.data
+}
+
+export async function getAgentUserModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data: AgentUserModelUsageItem[]
+  }>('/api/data/agent/users', { params })
   return res.data
 }
 

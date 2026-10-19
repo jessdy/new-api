@@ -40,6 +40,11 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'members',
+    titleKey: 'Usage by User',
+    build: () => null,
+  },
+  {
     id: 'flow',
     titleKey: 'Flow',
     build: () => null,
@@ -55,6 +60,7 @@ const DASHBOARD_SECTIONS = [
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
 const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
+const AGENT_ONLY_SECTIONS = new Set<string>(['members'])
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,
@@ -72,11 +78,13 @@ export const DASHBOARD_DEFAULT_SECTION = dashboardRegistry.defaultSection
 
 export function getDashboardSectionNavItems(
   t: TFunction,
-  options?: { isAdmin?: boolean }
+  options?: { isAdmin?: boolean; isAgent?: boolean }
 ) {
   const all = dashboardRegistry.getSectionNavItems(t)
-  if (options?.isAdmin) return all
-  return all.filter(
-    (_, idx) => !ADMIN_ONLY_SECTIONS.has(DASHBOARD_SECTIONS[idx].id)
-  )
+  return all.filter((_, idx) => {
+    const id = DASHBOARD_SECTIONS[idx].id
+    if (ADMIN_ONLY_SECTIONS.has(id) && !options?.isAdmin) return false
+    if (AGENT_ONLY_SECTIONS.has(id) && !options?.isAgent) return false
+    return true
+  })
 }

@@ -52,6 +52,13 @@ export interface UserTokenUsageItem {
   models?: TokenModelUsageItem[] | null
 }
 
+export interface AgentUserModelUsageItem {
+  user_id: number
+  username: string
+  deleted: boolean
+  models?: TokenModelUsageItem[] | null
+}
+
 export interface AgentQuotaDataItem {
   agent_id: number
   agent_name: string
