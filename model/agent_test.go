@@ -953,6 +953,9 @@ func TestReplaceAgentUserModelSettings(t *testing.T) {
 	require.NoError(t, CreateAgent(agent))
 	require.NoError(t, ReplaceAgentChannels(agent.Id, []int{1}))
 	require.NoError(t, UpsertAgentModelCost(agent.Id, "gpt-4", PricingValues{"ModelPrice": 0.75}))
+	require.NoError(t, UpsertAgentModelPrice(&AgentModelPrice{
+		AgentId: agent.Id, Model: "gpt-4", DiscountRatio: 1.5,
+	}))
 	require.NoError(t, DB.Create(&User{
 		Id: 501, Username: "cust", Password: "x", Role: common.RoleCommonUser,
 		Status: common.UserStatusEnabled, Group: "default", AffCode: "c1", AgentId: agent.Id,
@@ -988,6 +991,8 @@ func TestReplaceAgentUserModelSettings(t *testing.T) {
 	assert.Equal(t, "gpt-4", views[0].ModelName)
 	assert.Equal(t, 0.75, views[0].AgentCost["ModelPrice"])
 	assert.Equal(t, 2.5, views[0].Effective["ModelRatio"])
+	assert.Equal(t, 1.5, views[0].DiscountRatio)
+	assert.NotEqual(t, 0.75, views[0].Retail["ModelPrice"])
 
 	require.NoError(t, ReplaceAgentUserModelSettings(agent.Id, 501, AgentUserModelSettingsPayload{
 		LimitEnabled: false,

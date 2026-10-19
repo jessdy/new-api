@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"maps"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,7 +30,11 @@ type AgentUserModelSettingView struct {
 	Pricing   PricingValues `json:"pricing,omitempty"`
 	Effective PricingValues `json:"effective,omitempty"`
 	AgentCost PricingValues `json:"agent_cost,omitempty"`
-	Version   string        `json:"version"`
+	// Retail is the platform price this user pays before a per-user override.
+	// DiscountRatio scales that price when no per-user price is set.
+	Retail        PricingValues `json:"retail,omitempty"`
+	DiscountRatio float64       `json:"discount_ratio,omitempty"`
+	Version       string        `json:"version"`
 }
 
 type AgentUserModelSettingsPayload struct {
@@ -190,12 +195,22 @@ func BuildAgentUserModelSettingsView(agentId, userId int) (AgentUserModelSetting
 		for key, value := range item.CostEffective {
 			agentCost[key] = value
 		}
+		retail := maps.Clone(item.PlatformEffective)
+		if retail == nil {
+			retail = PricingValues{}
+		}
+		discount := item.DiscountRatio
+		if discount <= 0 {
+			discount = 1
+		}
 		view := AgentUserModelSettingView{
-			ModelName: item.ModelName,
-			Enabled:   !limitEnabled,
-			Effective: agentCost,
-			AgentCost: agentCost,
-			Version:   item.CostVersion,
+			ModelName:     item.ModelName,
+			Enabled:       !limitEnabled,
+			Effective:     agentCost,
+			AgentCost:     agentCost,
+			Retail:        retail,
+			DiscountRatio: discount,
+			Version:       item.CostVersion,
 		}
 		if row, ok := byModel[item.ModelName]; ok && row.Enabled {
 			view.Enabled = true

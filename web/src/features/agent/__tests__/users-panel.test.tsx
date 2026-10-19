@@ -282,3 +282,55 @@ it('loads deleted users when the status filter changes', async () => {
   ).not.toBeInTheDocument()
   expect(list).toHaveBeenCalledWith(1, 100, undefined, -1)
 })
+
+it('shows the current selling price beside the cost price', async () => {
+  vi.spyOn(agentApi, 'listAgentUsers').mockResolvedValue({
+    items: [
+      {
+        id: 12,
+        username: 'invited-alice',
+        display_name: 'Alice',
+        status: 1,
+        group: 'default',
+        quota: 100,
+        used_quota: 0,
+        agent_member_role: 'user',
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 50,
+  })
+  vi.spyOn(agentApi, 'getAgentUserModelSettings').mockResolvedValue({
+    limit_enabled: true,
+    models: [
+      {
+        model_name: 'gpt-4o',
+        enabled: true,
+        pricing: { ModelPrice: 4 },
+        agent_cost: { ModelPrice: 1 },
+        retail: { ModelPrice: 2 },
+        discount_ratio: 1.5,
+        version: 'v1',
+      },
+      {
+        model_name: 'claude',
+        enabled: true,
+        agent_cost: { ModelPrice: 1 },
+        retail: { ModelPrice: 2 },
+        discount_ratio: 1.5,
+        version: 'v1',
+      },
+    ],
+  })
+
+  renderPanel()
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Model Settings' })
+  )
+
+  expect(await screen.findByText('Current selling price')).toBeInTheDocument()
+  expect(screen.getByText('Cost price')).toBeInTheDocument()
+  expect(screen.getAllByText('4').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+})

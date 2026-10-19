@@ -98,6 +98,8 @@ export type AgentUserModelSettingItem = {
   pricing?: Record<string, number | string>
   effective?: Record<string, number | string>
   agent_cost?: Record<string, number | string>
+  retail?: Record<string, number | string>
+  discount_ratio?: number
   version: string
 }
 

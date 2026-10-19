@@ -72,14 +72,16 @@ type AgentModelPrice struct {
 
 // AgentModelListItem is one model available through the agent's selected channels.
 type AgentModelListItem struct {
-	ModelName       string        `json:"model_name"`
-	ChannelIds      []int         `json:"channel_ids"`
-	ChannelNames    []string      `json:"channel_names"`
-	DiscountRatio   float64       `json:"discount_ratio"`
-	CostConfigured  PricingValues `json:"cost_configured,omitempty"`
-	CostEffective   PricingValues `json:"cost_effective,omitempty"`
-	CostVersion     string        `json:"cost_version"`
-	HasCostOverride bool          `json:"has_cost_override"`
+	ModelName      string        `json:"model_name"`
+	ChannelIds     []int         `json:"channel_ids"`
+	ChannelNames   []string      `json:"channel_names"`
+	DiscountRatio  float64       `json:"discount_ratio"`
+	CostConfigured PricingValues `json:"cost_configured,omitempty"`
+	CostEffective  PricingValues `json:"cost_effective,omitempty"`
+	// PlatformEffective is the published model price before this agent's cost override.
+	PlatformEffective PricingValues `json:"-"`
+	CostVersion       string        `json:"cost_version"`
+	HasCostOverride   bool          `json:"has_cost_override"`
 }
 
 type AgentSettlementBill struct {
@@ -809,12 +811,13 @@ func ListAgentModels(agentId int) ([]AgentModelListItem, error) {
 			channelNames = []string{}
 		}
 		item := AgentModelListItem{
-			ModelName:     name,
-			ChannelIds:    channelIds,
-			ChannelNames:  channelNames,
-			DiscountRatio: 1,
-			CostEffective: effectiveByName[name],
-			CostVersion:   ModelPricingVersion(PricingValues{}),
+			ModelName:         name,
+			ChannelIds:        channelIds,
+			ChannelNames:      channelNames,
+			DiscountRatio:     1,
+			CostEffective:     effectiveByName[name],
+			PlatformEffective: effectiveByName[name],
+			CostVersion:       ModelPricingVersion(PricingValues{}),
 		}
 		if price, ok := priceByModel[name]; ok {
 			if price.DiscountRatio > 0 {

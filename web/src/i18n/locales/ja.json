@@ -1470,6 +1470,7 @@
     "Current Price": "現在の価格",
     "Current pricing conditions": "現在の料金条件",
     "Current quota": "現在のクォータ",
+    "Current selling price": "現在の販売価格",
     "Current time": "現在時刻",
     "Current token": "現在のトークン",
     "Current total = used + remaining. Changing the remaining quota updates the total and percentage.": "現在の合計 = 使用済み + 残り。残りの利用枠を変更すると、合計と使用率も更新されます。",

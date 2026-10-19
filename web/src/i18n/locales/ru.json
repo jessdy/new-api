@@ -1470,6 +1470,7 @@
     "Current Price": "Текущая цена",
     "Current pricing conditions": "Текущие условия тарификации",
     "Current quota": "Текущая квота",
+    "Current selling price": "Текущая цена продажи",
     "Current time": "Текущее время",
     "Current token": "Текущий токен",
     "Current total = used + remaining. Changing the remaining quota updates the total and percentage.": "Текущий итог = использовано + остаток. Изменение остатка квоты обновляет итог и процент использования.",

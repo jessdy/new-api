@@ -75,6 +75,8 @@ type DraftModel = {
   pricing: PricingValues
   effective: PricingValues
   agentCost: PricingValues
+  retail: PricingValues
+  discountRatio: number
   version: string
 }
 
@@ -85,8 +87,31 @@ function toDraft(item: AgentUserModelSettingItem): DraftModel {
     pricing: { ...item.pricing },
     effective: { ...(item.effective ?? item.pricing) },
     agentCost: { ...item.agent_cost },
+    retail: { ...item.retail },
+    discountRatio: item.discount_ratio && item.discount_ratio > 0 ? item.discount_ratio : 1,
     version: item.version,
   }
+}
+
+function salePricing(row: DraftModel): PricingValues {
+  const hasUserPrice = Object.keys(row.pricing).length > 0
+  if (hasUserPrice) {
+    const values: PricingValues = { ...row.retail, ...row.pricing }
+    const hasPrice = row.pricing.ModelPrice !== undefined
+    const hasRatio = row.pricing.ModelRatio !== undefined
+    if (hasRatio && !hasPrice) delete values.ModelPrice
+    if (hasPrice && !hasRatio) delete values.ModelRatio
+    return values
+  }
+  if (!(row.discountRatio > 0) || row.discountRatio === 1) return row.retail
+  const scaled: PricingValues = { ...row.retail }
+  if (typeof scaled.ModelPrice === 'number') {
+    scaled.ModelPrice = scaled.ModelPrice * row.discountRatio
+  }
+  if (typeof scaled.ModelRatio === 'number') {
+    scaled.ModelRatio = scaled.ModelRatio * row.discountRatio
+  }
+  return scaled
 }
 
 export function AgentUserModelSettingsDialog(
@@ -200,6 +225,20 @@ export function AgentUserModelSettingsDialog(
             model={modelPricingDisplay({
               model_name: row.model_name,
               effective: row.agentCost,
+            })}
+            options={{ tokenUnit: 'M' }}
+            showExpression={false}
+          />
+        ),
+      },
+      {
+        id: 'sale',
+        header: t('Current selling price'),
+        cell: (row) => (
+          <ModelPriceCell
+            model={modelPricingDisplay({
+              model_name: row.model_name,
+              effective: salePricing(row),
             })}
             options={{ tokenUnit: 'M' }}
             showExpression={false}

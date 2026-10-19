@@ -1470,6 +1470,7 @@
     "Current Price": "目前價格",
     "Current pricing conditions": "目前計價條件",
     "Current quota": "目前額度",
+    "Current selling price": "目前售價",
     "Current time": "目前時間",
     "Current token": "目前權杖",
     "Current total = used + remaining. Changing the remaining quota updates the total and percentage.": "目前總額度 = 已用 + 剩餘。修改剩餘額度後，總額度和已用比例會隨之更新。",
