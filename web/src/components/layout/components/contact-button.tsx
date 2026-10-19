@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Headset } from 'lucide-react'
+import { Phone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { IconWeChat } from '@/assets/brand-icons/icon-wechat'
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +45,9 @@ function isSafeQrCode(value: string) {
   )
 }
 
+const sideButtonClass =
+  'size-11 rounded-full shadow-md [&_svg]:pointer-events-none [&_svg]:size-5'
+
 export function ContactButton() {
   const { t } = useTranslation()
   const contactQuery = useQuery({
@@ -54,49 +58,60 @@ export function ContactButton() {
   const phone = contactQuery.data?.phone.trim() ?? ''
   const qrCode = contactQuery.data?.wechat_qrcode.trim() ?? ''
   const showQrCode = isSafeQrCode(qrCode)
-  if (!phone && !showQrCode) {
-    return null
-  }
-
   const tel = phoneLink(phone)
 
   return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            type='button'
-            variant='outline'
-            className='fixed top-1/2 right-0 z-40 h-auto -translate-y-1/2 flex-col gap-1 rounded-r-none px-2 py-3 shadow-md'
-            aria-label={t('Contact')}
-          />
-        }
-      >
-        <Headset aria-hidden='true' />
-        <span className='text-xs [writing-mode:vertical-rl]'>
-          {t('Contact')}
-        </span>
-      </PopoverTrigger>
-      <PopoverContent side='left' align='center' className='w-64'>
-        <PopoverHeader>
-          <PopoverTitle>{t('Contact')}</PopoverTitle>
-        </PopoverHeader>
-        {showQrCode ? (
-          <div className='flex flex-col gap-2'>
-            <p className='font-medium'>{t('WeChat')}</p>
+    <div className='fixed top-1/2 right-4 z-40 flex -translate-y-1/2 flex-col gap-3'>
+      <Popover>
+        <PopoverTrigger
+          render={
+            <Button
+              type='button'
+              size='icon-lg'
+              className={`${sideButtonClass} bg-[#07C160] text-white hover:bg-[#06ad56]`}
+              aria-label={t('WeChat')}
+            />
+          }
+        >
+          <IconWeChat aria-hidden='true' />
+        </PopoverTrigger>
+        <PopoverContent side='left' align='center' className='w-64'>
+          <PopoverHeader>
+            <PopoverTitle>{t('WeChat')}</PopoverTitle>
+          </PopoverHeader>
+          {showQrCode ? (
             <img
               src={qrCode}
               alt={t('WeChat QR code')}
               className='bg-background mx-auto size-44 rounded-md border object-contain'
             />
-          </div>
-        ) : null}
-        {phone ? (
-          <div className='flex items-center justify-between gap-2'>
-            <div className='min-w-0'>
-              <p className='text-muted-foreground text-xs'>
-                {t('Phone number')}
-              </p>
+          ) : (
+            <p className='text-muted-foreground'>
+              {t('No WeChat QR code has been set.')}
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
+      <Popover>
+        <PopoverTrigger
+          render={
+            <Button
+              type='button'
+              size='icon-lg'
+              variant='outline'
+              className={sideButtonClass}
+              aria-label={t('Phone number')}
+            />
+          }
+        >
+          <Phone aria-hidden='true' />
+        </PopoverTrigger>
+        <PopoverContent side='left' align='center' className='w-64'>
+          <PopoverHeader>
+            <PopoverTitle>{t('Phone number')}</PopoverTitle>
+          </PopoverHeader>
+          {phone ? (
+            <div className='flex items-center justify-between gap-2'>
               {tel ? (
                 <a href={tel} className='font-medium break-all hover:underline'>
                   {phone}
@@ -104,11 +119,15 @@ export function ContactButton() {
               ) : (
                 <p className='font-medium break-all'>{phone}</p>
               )}
+              <CopyButton value={phone} />
             </div>
-            <CopyButton value={phone} />
-          </div>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+          ) : (
+            <p className='text-muted-foreground'>
+              {t('No phone number has been set.')}
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
