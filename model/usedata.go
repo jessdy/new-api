@@ -1,7 +1,10 @@
 package model
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,6 +174,124 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (qu
 		Group("user_id, username, model_name, created_at").
 		Find(&quotaDatas).Error
 	return quotaDatas, err
+}
+
+// TokenModelUsage is one model's totals for a single API key.
+type TokenModelUsage struct {
+	ModelName        string `json:"model_name"`
+	Count            int    `json:"count"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	CacheTokens      int    `json:"cache_tokens"`
+	Quota            int    `json:"quota"`
+}
+
+// UserTokenUsage is one API key and the models it used in the selected range.
+// Keys with no calls are included with an empty model list.
+type UserTokenUsage struct {
+	TokenID   int               `json:"token_id"`
+	TokenName string            `json:"token_name"`
+	Deleted   bool              `json:"deleted"`
+	Models    []TokenModelUsage `json:"models"`
+}
+
+// GetUserTokenModelUsage aggregates the current user's quota_data by API key
+// and model. It also lists that user's keys that had no usage in the range.
+func GetUserTokenModelUsage(userId int, startTime int64, endTime int64) ([]UserTokenUsage, error) {
+	startTime = alignHourlyStart(startTime)
+	type usageRow struct {
+		TokenID          int    `gorm:"column:token_id"`
+		ModelName        string `gorm:"column:model_name"`
+		Count            int    `gorm:"column:count"`
+		PromptTokens     int    `gorm:"column:prompt_tokens"`
+		CompletionTokens int    `gorm:"column:completion_tokens"`
+		CacheTokens      int    `gorm:"column:cache_tokens"`
+		Quota            int    `gorm:"column:quota"`
+	}
+	var rows []usageRow
+	err := DB.Table("quota_data").
+		Select("token_id, model_name, sum(count) as count, sum(prompt_tokens) as prompt_tokens, sum(completion_tokens) as completion_tokens, sum(cache_tokens) as cache_tokens, sum(quota) as quota").
+		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userId, startTime, endTime).
+		Group("token_id, model_name").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var tokens []Token
+	if err := DB.Select("id, name").Where("user_id = ?", userId).Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+
+	byToken := make(map[int]*UserTokenUsage, len(tokens))
+	for _, token := range tokens {
+		byToken[token.Id] = &UserTokenUsage{
+			TokenID:   token.Id,
+			TokenName: token.Name,
+			Models:    []TokenModelUsage{},
+		}
+	}
+	var missingIDs []int
+	for _, row := range rows {
+		item, ok := byToken[row.TokenID]
+		if !ok {
+			item = &UserTokenUsage{
+				TokenID: row.TokenID,
+				Deleted: row.TokenID != 0,
+				Models:  []TokenModelUsage{},
+			}
+			byToken[row.TokenID] = item
+			if row.TokenID != 0 {
+				missingIDs = append(missingIDs, row.TokenID)
+			}
+		}
+		item.Models = append(item.Models, TokenModelUsage{
+			ModelName:        row.ModelName,
+			Count:            row.Count,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			CacheTokens:      row.CacheTokens,
+			Quota:            row.Quota,
+		})
+	}
+	if len(missingIDs) > 0 {
+		var named []Token
+		if err := DB.Unscoped().Select("id, name").Where("id IN ? AND user_id = ?", missingIDs, userId).Find(&named).Error; err != nil {
+			return nil, err
+		}
+		for _, token := range named {
+			if item := byToken[token.Id]; item != nil {
+				item.TokenName = token.Name
+			}
+		}
+	}
+
+	result := make([]UserTokenUsage, 0, len(byToken))
+	for _, item := range byToken {
+		slices.SortFunc(item.Models, func(a, b TokenModelUsage) int {
+			if c := cmp.Compare(b.Count, a.Count); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(b.Quota, a.Quota); c != 0 {
+				return c
+			}
+			return strings.Compare(a.ModelName, b.ModelName)
+		})
+		result = append(result, *item)
+	}
+	slices.SortFunc(result, func(a, b UserTokenUsage) int {
+		if (a.TokenID == 0) != (b.TokenID == 0) {
+			if a.TokenID == 0 {
+				return 1
+			}
+			return -1
+		}
+		if c := strings.Compare(a.TokenName, b.TokenName); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.TokenID, b.TokenID)
+	})
+	return result, nil
 }
 
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

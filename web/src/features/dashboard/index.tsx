@@ -37,6 +37,7 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { KeyUsageTable } from './components/keys/key-usage-table'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
@@ -218,6 +219,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   models: {
     titleKey: 'Model Call Analytics',
   },
+  keys: {
+    titleKey: 'Usage by Key',
+  },
   flow: {
     titleKey: 'Flow',
   },
@@ -373,7 +377,19 @@ export function Dashboard() {
         />
       </>
     ) : null
-  const sectionActions = modelActions ?? flowActions
+  const keyActions =
+    activeSection === 'keys' ? (
+      <ModelsFilter
+        preferences={chartPreferences}
+        currentFilters={modelFilters}
+        onFilterChange={handleFilterChange}
+        onReset={handleResetFilters}
+        timeOnly
+        titleKey='Usage by Key'
+        descriptionKey='Filter usage by time range.'
+      />
+    ) : null
+  const sectionActions = modelActions ?? keyActions ?? flowActions
 
   if (activeSection === 'overview') {
     return <OverviewDashboard />
@@ -469,6 +485,11 @@ export function Dashboard() {
                 </FadeIn>
               )}
             </>
+          )}
+          {activeSection === 'keys' && (
+            <FadeIn>
+              <KeyUsageTable filters={modelFilters} />
+            </FadeIn>
           )}
           {activeSection === 'users' && (
             <FadeIn>

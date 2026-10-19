@@ -345,3 +345,58 @@ func TestSumConsumeLogUsageIncludesCacheTokensFromOther(t *testing.T) {
 	assert.Equal(t, "kimi-k3", byModel[0].ModelName)
 	assert.Equal(t, int64(23), byModel[0].CacheTokens)
 }
+
+func TestGetUserTokenModelUsage(t *testing.T) {
+	newAgentTestDB(t)
+	require.NoError(t, DB.AutoMigrate(&QuotaData{}, &Token{}))
+
+	const userID = 7
+	start := int64(1_700_006_400)
+	end := start + 7200
+	require.NoError(t, DB.Create(&Token{Id: 1, UserId: userID, Key: "key-alpha", Name: "alpha"}).Error)
+	require.NoError(t, DB.Create(&Token{Id: 2, UserId: userID, Key: "key-beta", Name: "beta"}).Error)
+	old := &Token{Id: 3, UserId: userID, Key: "key-old", Name: "old"}
+	require.NoError(t, DB.Create(old).Error)
+	require.NoError(t, DB.Delete(old).Error)
+	require.NoError(t, DB.Create(&Token{Id: 9, UserId: 8, Key: "key-other", Name: "other"}).Error)
+
+	rows := []QuotaData{
+		{UserID: userID, TokenID: 1, ModelName: "gpt-4o", CreatedAt: start, Count: 2, PromptTokens: 10, CompletionTokens: 4, CacheTokens: 1, Quota: 20},
+		{UserID: userID, TokenID: 1, ModelName: "gpt-4o", CreatedAt: start + 3600, Count: 3, PromptTokens: 30, CompletionTokens: 6, CacheTokens: 2, Quota: 40},
+		{UserID: userID, TokenID: 1, ModelName: "claude", CreatedAt: start, Count: 1, PromptTokens: 5, CompletionTokens: 1, CacheTokens: 0, Quota: 8},
+		{UserID: userID, TokenID: 3, ModelName: "gpt-4o", CreatedAt: start, Count: 4, PromptTokens: 7, CompletionTokens: 2, CacheTokens: 3, Quota: 15},
+		{UserID: userID, TokenID: 0, ModelName: "gpt-4o", CreatedAt: start, Count: 1, PromptTokens: 2, CompletionTokens: 1, CacheTokens: 0, Quota: 3},
+		{UserID: userID, TokenID: 1, ModelName: "gpt-4o", CreatedAt: start - 3600, Count: 9, PromptTokens: 90, CompletionTokens: 9, CacheTokens: 9, Quota: 90},
+		{UserID: 8, TokenID: 9, ModelName: "gpt-4o", CreatedAt: start, Count: 6, PromptTokens: 60, CompletionTokens: 6, CacheTokens: 6, Quota: 60},
+	}
+	require.NoError(t, DB.Create(&rows).Error)
+
+	usage, err := GetUserTokenModelUsage(userID, start+100, end)
+	require.NoError(t, err)
+	require.Equal(t, []UserTokenUsage{
+		{
+			TokenID: 1, TokenName: "alpha",
+			Models: []TokenModelUsage{
+				{ModelName: "gpt-4o", Count: 5, PromptTokens: 40, CompletionTokens: 10, CacheTokens: 3, Quota: 60},
+				{ModelName: "claude", Count: 1, PromptTokens: 5, CompletionTokens: 1, CacheTokens: 0, Quota: 8},
+			},
+		},
+		{TokenID: 2, TokenName: "beta", Models: []TokenModelUsage{}},
+		{
+			TokenID: 3, TokenName: "old", Deleted: true,
+			Models: []TokenModelUsage{
+				{ModelName: "gpt-4o", Count: 4, PromptTokens: 7, CompletionTokens: 2, CacheTokens: 3, Quota: 15},
+			},
+		},
+		{
+			TokenID: 0, Deleted: false,
+			Models: []TokenModelUsage{
+				{ModelName: "gpt-4o", Count: 1, PromptTokens: 2, CompletionTokens: 1, CacheTokens: 0, Quota: 3},
+			},
+		},
+	}, usage)
+
+	empty, err := GetUserTokenModelUsage(99, start, end)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

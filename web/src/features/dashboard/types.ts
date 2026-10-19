@@ -36,6 +36,22 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+export interface TokenModelUsageItem {
+  model_name: string
+  count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  quota: number
+}
+
+export interface UserTokenUsageItem {
+  token_id: number
+  token_name: string
+  deleted: boolean
+  models?: TokenModelUsageItem[] | null
+}
+
 export interface AgentQuotaDataItem {
   agent_id: number
   agent_name: string
