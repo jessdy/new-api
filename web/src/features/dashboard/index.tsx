@@ -37,6 +37,7 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { AgentUsageTable } from './components/agents/agent-usage-table'
 import { KeyUsageTable } from './components/keys/key-usage-table'
 import { MemberUsageTable } from './components/members/member-usage-table'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
@@ -226,6 +227,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   members: {
     titleKey: 'Usage by User',
   },
+  agents: {
+    titleKey: 'Usage by Agent',
+  },
   flow: {
     titleKey: 'Flow',
   },
@@ -304,6 +308,7 @@ export function Dashboard() {
       DASHBOARD_SECTION_IDS.filter((section) => {
         if (section === 'overview') return false
         if (section === 'users' && !isAdmin) return false
+        if (section === 'agents' && !isAdmin) return false
         if (section === 'members' && !isAgent) return false
         return true
       }),
@@ -311,13 +316,14 @@ export function Dashboard() {
   )
   useEffect(() => {
     if (userRole == null) return
-    if (activeSection === 'members' && !isAgent) {
-      void navigate({
-        to: '/dashboard/$section',
-        params: { section: 'models' },
-      })
-    }
-  }, [activeSection, isAgent, navigate, userRole])
+    const blockedMember = activeSection === 'members' && !isAgent
+    const blockedAgent = activeSection === 'agents' && !isAdmin
+    if (!blockedMember && !blockedAgent) return
+    void navigate({
+      to: '/dashboard/$section',
+      params: { section: 'models' },
+    })
+  }, [activeSection, isAdmin, isAgent, navigate, userRole])
   const handleSectionChange = useCallback(
     (section: string) => {
       void navigate({
@@ -417,7 +423,20 @@ export function Dashboard() {
         descriptionKey='Filter usage by time range.'
       />
     ) : null
-  const sectionActions = modelActions ?? keyActions ?? memberActions ?? flowActions
+  const agentActions =
+    activeSection === 'agents' && isAdmin ? (
+      <ModelsFilter
+        preferences={chartPreferences}
+        currentFilters={modelFilters}
+        onFilterChange={handleFilterChange}
+        onReset={handleResetFilters}
+        timeOnly
+        titleKey='Usage by Agent'
+        descriptionKey='Filter usage by time range.'
+      />
+    ) : null
+  const sectionActions =
+    modelActions ?? keyActions ?? memberActions ?? agentActions ?? flowActions
 
   if (activeSection === 'overview') {
     return <OverviewDashboard />
@@ -522,6 +541,11 @@ export function Dashboard() {
           {activeSection === 'members' && isAgent && (
             <FadeIn>
               <MemberUsageTable filters={modelFilters} />
+            </FadeIn>
+          )}
+          {activeSection === 'agents' && isAdmin && (
+            <FadeIn>
+              <AgentUsageTable filters={modelFilters} />
             </FadeIn>
           )}
           {activeSection === 'users' && (

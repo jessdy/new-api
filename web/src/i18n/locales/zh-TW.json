@@ -5975,6 +5975,7 @@
     "Usage": "用量",
     "Usage · {{price}}": "用量 · {{price}}",
     "Usage at a glance": "用量概覽",
+    "Usage by Agent": "按代理商統計",
     "Usage by Key": "按 Key 統計",
     "Usage by User": "按用戶統計",
     "Usage for users on your current channels in the selected time range.": "依所選時間範圍查詢目前渠道用戶的消耗與費用。",

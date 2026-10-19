@@ -5975,6 +5975,7 @@
     "Usage": "使用量",
     "Usage · {{price}}": "使用量 · {{price}}",
     "Usage at a glance": "使用状況の概要",
+    "Usage by Agent": "代理店別使用量",
     "Usage by Key": "キー別使用量",
     "Usage by User": "ユーザー別使用量",
     "Usage for users on your current channels in the selected time range.": "選択期間における現在のチャネルユーザーの消費と料金です。",

@@ -538,6 +538,7 @@ export const STATIC_I18N_KEYS = [
   'Dashboard',
   'System data statistics',
   'Flow',
+  'Usage by Agent',
   'Usage by Key',
   'Usage by User',
   'Filter usage by time range.',

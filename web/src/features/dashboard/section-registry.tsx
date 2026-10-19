@@ -45,6 +45,12 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'agents',
+    titleKey: 'Usage by Agent',
+    adminOnly: true,
+    build: () => null,
+  },
+  {
     id: 'flow',
     titleKey: 'Flow',
     build: () => null,
@@ -59,7 +65,7 @@ const DASHBOARD_SECTIONS = [
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
+const ADMIN_ONLY_SECTIONS = new Set<string>(['agents', 'users'])
 const AGENT_ONLY_SECTIONS = new Set<string>(['members'])
 
 const dashboardRegistry = createSectionRegistry<

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  AgentModelUsageItem,
   AgentQuotaDataItem,
   AgentUserModelUsageItem,
   FlowQuotaDataItem,
@@ -81,6 +82,18 @@ export async function getAgentUserModelUsage(params: {
     message?: string
     data: AgentUserModelUsageItem[]
   }>('/api/data/agent/users', { params })
+  return res.data
+}
+
+export async function getAllAgentModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data: AgentModelUsageItem[]
+  }>('/api/data/agents/usage', { params })
   return res.data
 }
 

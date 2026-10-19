@@ -5975,6 +5975,7 @@
     "Usage": "Использование",
     "Usage · {{price}}": "Объём · {{price}}",
     "Usage at a glance": "Краткий обзор использования",
+    "Usage by Agent": "Использование по агентам",
     "Usage by Key": "Использование по ключам",
     "Usage by User": "Использование по пользователям",
     "Usage for users on your current channels in the selected time range.": "Расход и плата пользователей текущих каналов за выбранный период.",
