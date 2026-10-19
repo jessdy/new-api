@@ -116,6 +116,11 @@ var WeChatServerAddress = ""
 var WeChatServerToken = ""
 var WeChatAccountQRCodeImageURL = ""
 
+// Contact details shown by the public side button. These are separate from
+// the WeChat login QR code.
+var ContactPhone = ""
+var ContactWeChatQRCode = ""
+
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""
 

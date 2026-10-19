@@ -1,7 +1,9 @@
 package model
 
 import (
+	"errors"
 	"maps"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -138,6 +140,8 @@ func InitOptionMap() {
 	common.OptionMap["WeChatServerAddress"] = ""
 	common.OptionMap["WeChatServerToken"] = ""
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
+	common.OptionMap["ContactPhone"] = common.ContactPhone
+	common.OptionMap["ContactWeChatQRCode"] = common.ContactWeChatQRCode
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
@@ -212,7 +216,82 @@ func SyncOptions(frequency int) {
 	}
 }
 
+func normalizeOptionValue(key string, value string) string {
+	switch key {
+	case "ContactPhone", "ContactWeChatQRCode":
+		return strings.TrimSpace(value)
+	default:
+		return value
+	}
+}
+
+func validateContactOption(key string, value string) error {
+	switch key {
+	case "ContactPhone":
+		return validateContactPhone(value)
+	case "ContactWeChatQRCode":
+		return validateContactWeChatQRCode(value)
+	default:
+		return nil
+	}
+}
+
+func validateContactPhone(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len([]rune(value)) > 40 {
+		return errors.New("contact phone is invalid")
+	}
+	hasDigit := false
+	for _, r := range value {
+		switch {
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r == '+' || r == '-' || r == ' ' || r == '(' || r == ')':
+		default:
+			return errors.New("contact phone is invalid")
+		}
+	}
+	if !hasDigit {
+		return errors.New("contact phone is invalid")
+	}
+	return nil
+}
+
+func validateContactWeChatQRCode(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len(value) > 1_500_000 {
+		return errors.New("contact wechat qr code is too large")
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		parsed, err := url.ParseRequestURI(value)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return errors.New("contact wechat qr code is invalid")
+		}
+		return nil
+	}
+	header, payload, ok := strings.Cut(value, ";base64,")
+	if !ok || payload == "" || strings.ContainsAny(payload, " \t\r\n") {
+		return errors.New("contact wechat qr code is invalid")
+	}
+	switch strings.ToLower(strings.TrimPrefix(header, "data:image/")) {
+	case "png", "jpeg", "jpg", "webp", "gif":
+		return nil
+	default:
+		return errors.New("contact wechat qr code is invalid")
+	}
+}
+
 func validateOptionValue(key string, value string) error {
+	if err := validateContactOption(key, value); err != nil {
+		return err
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}
@@ -226,6 +305,7 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	value = normalizeOptionValue(key, value)
 	if IsModelPricingOption(key) {
 		return UpdateModelPricingOptions(map[string]string{key: value})
 	}
@@ -256,6 +336,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	normalized := make(map[string]string, len(values))
+	for key, value := range values {
+		normalized[key] = normalizeOptionValue(key, value)
+	}
+	values = normalized
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
@@ -540,6 +625,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.WeChatServerToken = value
 	case "WeChatAccountQRCodeImageURL":
 		common.WeChatAccountQRCodeImageURL = value
+	case "ContactPhone":
+		common.ContactPhone = value
+	case "ContactWeChatQRCode":
+		common.ContactWeChatQRCode = value
 	case "TelegramBotToken":
 		common.TelegramBotToken = value
 	case "TelegramBotName":

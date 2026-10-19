@@ -20,6 +20,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 
+import { CONTACT_QUERY_KEY } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
@@ -61,6 +62,12 @@ export function useUpdateOption() {
           } catch {
             /* empty */
           }
+        }
+        if (
+          variables.key === 'ContactPhone' ||
+          variables.key === 'ContactWeChatQRCode'
+        ) {
+          queryClient.invalidateQueries({ queryKey: CONTACT_QUERY_KEY })
         }
 
         toast.success(i18next.t('Setting updated successfully'))

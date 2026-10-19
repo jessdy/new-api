@@ -119,6 +119,8 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  ContactPhone: string
+  ContactWeChatQRCode: string
 }
 
 export type AuthSettings = {

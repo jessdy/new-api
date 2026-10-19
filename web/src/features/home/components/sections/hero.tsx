@@ -110,7 +110,7 @@ export function Hero(props: HeroProps) {
             style={{ animationDelay: '120ms' }}
           >
             {t(
-              'Access a vast selection of models via a standard, unified API protocol. Power AI applications, manage digital assets, and connect the Future.'
+              'Model access, intelligent routing, and token scheduling for AI applications'
             )}
           </p>
 

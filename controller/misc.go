@@ -41,6 +41,20 @@ func TestStatus(c *gin.Context) {
 	return
 }
 
+func GetContact(c *gin.Context) {
+	common.OptionMapRWMutex.RLock()
+	phone := common.ContactPhone
+	qrCode := common.ContactWeChatQRCode
+	common.OptionMapRWMutex.RUnlock()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"phone":         phone,
+			"wechat_qrcode": qrCode,
+		},
+	})
+}
+
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()

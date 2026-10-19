@@ -75,6 +75,24 @@ export async function getStatus() {
   return requireServerSuccess(res.data)?.data as Record<string, unknown>
 }
 
+export const CONTACT_QUERY_KEY = ['contact'] as const
+
+export type ContactInfo = {
+  phone: string
+  wechat_qrcode: string
+}
+
+export async function getContact(): Promise<ContactInfo> {
+  const res = await api.get('/api/contact')
+  const data = requireServerSuccess(res.data)?.data as
+    | Partial<ContactInfo>
+    | undefined
+  return {
+    phone: data?.phone ?? '',
+    wechat_qrcode: data?.wechat_qrcode ?? '',
+  }
+}
+
 export async function getNotice(): Promise<{
   success: boolean
   message?: string

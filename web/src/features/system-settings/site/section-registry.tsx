@@ -23,6 +23,7 @@ import {
   serializeHeaderNavModules,
   serializeSidebarModulesAdmin,
 } from '../maintenance/config'
+import { ContactSection } from '../maintenance/contact-section'
 import { HeaderNavigationSection } from '../maintenance/header-navigation-section'
 import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
@@ -56,6 +57,16 @@ const SITE_SECTIONS = [
     titleKey: 'System Notice',
     build: (settings: SiteSettings) => (
       <NoticeSection defaultValue={settings.Notice ?? ''} />
+    ),
+  },
+  {
+    id: 'contact',
+    titleKey: 'Contact',
+    build: (settings: SiteSettings) => (
+      <ContactSection
+        defaultPhone={settings.ContactPhone}
+        defaultQRCode={settings.ContactWeChatQRCode}
+      />
     ),
   },
   {
