@@ -1553,6 +1553,7 @@
     "Decrease quota for user “{{name}}”": "Уменьшить квоту пользователя «{{name}}»",
     "Decrease user quota": "Уменьшить квоту пользователя",
     "Decreased user quota by {{quota}}": "Квота пользователя уменьшена на {{quota}}",
+    "Dedicated pre-sales consultant": "Персональный консультант по предпродаже",
     "Deducted by subscription": "Списано по подписке",
     "DeepSeek": "DeepSeek",
     "default": "по умолчанию",

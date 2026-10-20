@@ -1553,6 +1553,7 @@
     "Decrease quota for user “{{name}}”": "ユーザー「{{name}}」のクォータを減額",
     "Decrease user quota": "ユーザーのクォータを減額",
     "Decreased user quota by {{quota}}": "ユーザーのクォータを {{quota}} 減らしました",
+    "Dedicated pre-sales consultant": "専属プリセールスコンサルタント",
     "Deducted by subscription": "サブスクリプションで控除",
     "DeepSeek": "DeepSeek",
     "default": "デフォルト",

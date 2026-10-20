@@ -77,7 +77,7 @@ export function ContactButton() {
         </PopoverTrigger>
         <PopoverContent side='left' align='center' className='w-64'>
           <PopoverHeader>
-            <PopoverTitle>{t('WeChat')}</PopoverTitle>
+            <PopoverTitle>{t('Dedicated pre-sales consultant')}</PopoverTitle>
           </PopoverHeader>
           {showQrCode ? (
             <img
