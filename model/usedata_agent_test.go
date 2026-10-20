@@ -269,17 +269,21 @@ func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
 	}).Error)
 
 	userOther := common.MapToJsonStr(map[string]any{
-		"admin_info": map[string]any{"platform_quota": 4},
+		"cache_tokens": 2,
+		"model_price":  1.5,
+		"admin_info":   map[string]any{"platform_quota": 4},
 	})
 	costOther := common.MapToJsonStr(map[string]any{
-		"admin_info": map[string]any{"platform_quota": 9},
+		"cache_tokens": 1,
+		"model_price":  3,
+		"admin_info":   map[string]any{"platform_quota": 9},
 	})
 	require.NoError(t, LOG_DB.Create(&[]Log{
-		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 1000, Quota: 20, PromptTokens: 8, CompletionTokens: 2, Other: userOther},
-		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 12, CreatedAt: 1100, Quota: 10, PromptTokens: 3, CompletionTokens: 1, Other: costOther},
-		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 99, CreatedAt: 1000, Quota: 50, PromptTokens: 9, CompletionTokens: 9, Other: costOther},
-		{UserId: 602, Username: "other-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 1000, Quota: 80, PromptTokens: 7, CompletionTokens: 7, Other: costOther},
-		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, CreatedAt: 5000, Quota: 15, PromptTokens: 1, CompletionTokens: 1, Other: userOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, ModelName: "gpt-4.1", CreatedAt: 1000, Quota: 20, PromptTokens: 8, CompletionTokens: 2, Other: userOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 12, ModelName: "kimi-k3", CreatedAt: 1100, Quota: 10, PromptTokens: 3, CompletionTokens: 1, Other: costOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 99, ModelName: "gpt-4.1", CreatedAt: 1000, Quota: 50, PromptTokens: 9, CompletionTokens: 9, Other: costOther},
+		{UserId: 602, Username: "other-user", Type: LogTypeConsume, ChannelId: 11, ModelName: "gpt-4.1", CreatedAt: 1000, Quota: 80, PromptTokens: 7, CompletionTokens: 7, Other: costOther},
+		{UserId: 601, Username: "settle-user", Type: LogTypeConsume, ChannelId: 11, ModelName: "gpt-4.1", CreatedAt: 5000, Quota: 15, PromptTokens: 1, CompletionTokens: 1, Other: userOther},
 	}).Error)
 
 	usage, err := GetAgentSettlementUsage(agent.Id, 900, 2000)
@@ -291,10 +295,72 @@ func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
 	assert.Equal(t, int64(30), usage.Users[0].Quota)
 	assert.Equal(t, int64(13), usage.Users[0].PlatformQuota)
 	assert.Equal(t, int64(14), usage.Users[0].TokenUsed)
+	assert.Equal(t, int64(3), usage.Users[0].CacheTokens)
 	assert.Equal(t, int64(2), usage.Count)
 	assert.Equal(t, int64(30), usage.Quota)
 	assert.Equal(t, int64(13), usage.PlatformQuota)
 	assert.Equal(t, int64(14), usage.TokenUsed)
+	assert.Equal(t, int64(3), usage.CacheTokens)
+	require.Len(t, usage.Users[0].Models, 2)
+	assert.Equal(t, "gpt-4.1", usage.Users[0].Models[0].ModelName)
+	assert.Equal(t, int64(20), usage.Users[0].Models[0].Quota)
+	assert.Equal(t, int64(8), usage.Users[0].Models[0].PromptTokens)
+	assert.Equal(t, int64(2), usage.Users[0].Models[0].CompletionTokens)
+	assert.Equal(t, int64(2), usage.Users[0].Models[0].CacheTokens)
+	assert.Equal(t, 1.5, usage.Users[0].Models[0].UnitPrice)
+	assert.Equal(t, "kimi-k3", usage.Users[0].Models[1].ModelName)
+	assert.Equal(t, 3.0, usage.Users[0].Models[1].UnitPrice)
+	require.Len(t, usage.Models, 2)
+	assert.Equal(t, "gpt-4.1", usage.Models[0].ModelName)
+}
+
+func TestGetChannelPendingSettlementGroupsByChannelAndModel(t *testing.T) {
+	db := newAgentTestDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}, &Channel{}))
+	previousLogDB := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = previousLogDB })
+
+	require.NoError(t, DB.Create(&[]Channel{
+		{Id: 11, Name: "east", Key: "k1", Status: 1},
+		{Id: 12, Name: "west", Key: "k2", Status: 1},
+	}).Error)
+	otherA := common.MapToJsonStr(map[string]any{
+		"cache_tokens": 4,
+		"model_price":  2,
+		"admin_info":   map[string]any{"platform_quota": 7},
+	})
+	otherB := common.MapToJsonStr(map[string]any{
+		"cache_tokens": 1,
+		"model_price":  5,
+		"admin_info":   map[string]any{"platform_quota": 3},
+	})
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{UserId: 1, Username: "a", Type: LogTypeConsume, ChannelId: 11, ModelName: "gpt-4.1", CreatedAt: 1000, Quota: 20, PromptTokens: 8, CompletionTokens: 2, Other: otherA},
+		{UserId: 1, Username: "a", Type: LogTypeConsume, ChannelId: 11, ModelName: "kimi-k3", CreatedAt: 1100, Quota: 6, PromptTokens: 3, CompletionTokens: 1, Other: otherB},
+		{UserId: 2, Username: "b", Type: LogTypeConsume, ChannelId: 12, ModelName: "gpt-4.1", CreatedAt: 1200, Quota: 10, PromptTokens: 4, CompletionTokens: 1, Other: otherA},
+		{UserId: 1, Username: "a", Type: LogTypeConsume, ChannelId: 11, ModelName: "gpt-4.1", CreatedAt: 5000, Quota: 50, PromptTokens: 9, CompletionTokens: 9, Other: otherA},
+	}).Error)
+
+	usage, err := GetChannelPendingSettlement(900, 2000)
+	require.NoError(t, err)
+	require.Len(t, usage.Channels, 2)
+	assert.Equal(t, 11, usage.Channels[0].ChannelId)
+	assert.Equal(t, "east", usage.Channels[0].ChannelName)
+	assert.Equal(t, 2, usage.Channels[0].Count)
+	assert.Equal(t, int64(26), usage.Channels[0].Quota)
+	assert.Equal(t, int64(10), usage.Channels[0].PlatformQuota)
+	assert.Equal(t, int64(5), usage.Channels[0].CacheTokens)
+	require.Len(t, usage.Channels[0].Models, 2)
+	assert.Equal(t, "gpt-4.1", usage.Channels[0].Models[0].ModelName)
+	assert.Equal(t, int64(20), usage.Channels[0].Models[0].Quota)
+	assert.Equal(t, 2.0, usage.Channels[0].Models[0].UnitPrice)
+	assert.Equal(t, 12, usage.Channels[1].ChannelId)
+	assert.Equal(t, "west", usage.Channels[1].ChannelName)
+	assert.Equal(t, int64(3), usage.Count)
+	assert.Equal(t, int64(36), usage.Quota)
+	assert.Equal(t, int64(17), usage.PlatformQuota)
+	require.Len(t, usage.Models, 2)
 }
 
 func TestSumConsumeLogUsageIncludesCacheTokensFromOther(t *testing.T) {

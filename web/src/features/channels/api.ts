@@ -668,3 +668,51 @@ export async function getPrefillGroups(
   const res = await api.get('/api/prefill_group', { params: { type } })
   return res.data
 }
+
+export type ChannelPendingSettlementModel = {
+  model_name: string
+  count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  unit_price: number
+  quota: number
+  platform_quota: number
+}
+
+export type ChannelPendingSettlementChannel = {
+  channel_id: number
+  channel_name: string
+  count: number
+  quota: number
+  platform_quota: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  models: ChannelPendingSettlementModel[]
+}
+
+export type ChannelPendingSettlement = {
+  channels: ChannelPendingSettlementChannel[]
+  models: ChannelPendingSettlementModel[]
+  count: number
+  quota: number
+  platform_quota: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+}
+
+export async function getChannelPendingSettlement(
+  startTimestamp: number,
+  endTimestamp: number
+): Promise<ChannelPendingSettlement> {
+  const res = await api.get('/api/channel/pending_settlement', {
+    params: {
+      start_timestamp: startTimestamp,
+      end_timestamp: endTimestamp,
+    },
+  })
+  requireServerSuccess(res.data)
+  return res.data.data
+}

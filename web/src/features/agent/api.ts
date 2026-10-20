@@ -364,6 +364,17 @@ export async function updateAgentPaymentConfig(
   return res.data.data
 }
 
+export type SettlementModelStat = {
+  model_name: string
+  count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  unit_price: number
+  quota: number
+  platform_quota: number
+}
+
 export type AgentSettlementUsageUser = {
   user_id: number
   username: string
@@ -373,16 +384,20 @@ export type AgentSettlementUsageUser = {
   token_used: number
   prompt_tokens: number
   completion_tokens: number
+  cache_tokens: number
+  models: SettlementModelStat[]
 }
 
 export type AgentSettlementUsage = {
   users: AgentSettlementUsageUser[]
+  models: SettlementModelStat[]
   count: number
   quota: number
   platform_quota: number
   token_used: number
   prompt_tokens: number
   completion_tokens: number
+  cache_tokens: number
 }
 
 export async function listAgentSettlement(agentId?: number) {

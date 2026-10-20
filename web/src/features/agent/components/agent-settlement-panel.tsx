@@ -12,11 +12,12 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with this program. If you did not, see <https://www.gnu.org/licenses/>.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,14 +28,25 @@ import {
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
+import { Button } from '@/components/ui/button'
+import { TableCell, TableRow } from '@/components/ui/table'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
+import dayjs from '@/lib/dayjs'
 import { formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getAgentSettlementUsage,
   listAgentSettlement,
   type AgentSettlementUsageUser,
 } from '../api'
+import {
+  buildSettlementStatementCsv,
+  downloadTextFile,
+} from '../lib/settlement-stats'
+import { SettlementModelStatsTable } from './settlement-model-stats-table'
 
 function defaultSettlementRange() {
   const end = new Date()
@@ -46,7 +58,10 @@ function defaultSettlementRange() {
 
 export function AgentSettlementPanel(props: { agentId?: number }) {
   const { t } = useTranslation()
+  const user = useAuthStore((s) => s.auth.user)
+  const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const [range, setRange] = useState(defaultSettlementRange)
+  const [expandedUserId, setExpandedUserId] = useState<number | null>(null)
   const startTimestamp = range.start
     ? Math.floor(range.start.getTime() / 1000)
     : 0
@@ -75,7 +90,12 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
         id: 'user',
         header: t('User'),
         cell: (row) => (
-          <span className='font-medium'>
+          <span className='inline-flex items-center gap-2 font-medium'>
+            {expandedUserId === row.user_id ? (
+              <ChevronDown className='text-muted-foreground size-4 shrink-0' />
+            ) : (
+              <ChevronRight className='text-muted-foreground size-4 shrink-0' />
+            )}
             #{row.user_id} {row.username}
           </span>
         ),
@@ -101,11 +121,28 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
         cell: (row) => formatQuota(row.platform_quota),
       },
     ],
-    [t]
+    [expandedUserId, t]
   )
 
   const usage = usageQuery.data
   const margin = (usage?.quota ?? 0) - (usage?.platform_quota ?? 0)
+
+  const exportStatement = () => {
+    if (!usage) return
+    const csv = buildSettlementStatementCsv({
+      periodStart: dayjs.unix(startTimestamp).format('YYYY-MM-DD HH:mm:ss'),
+      periodEnd: dayjs.unix(endTimestamp).format('YYYY-MM-DD HH:mm:ss'),
+      users: usage.users,
+      models: usage.models ?? [],
+      quota: usage.quota,
+      platformQuota: usage.platform_quota,
+    })
+    const agentPart = props.agentId ? `agent-${props.agentId}-` : ''
+    downloadTextFile(
+      `settlement-${agentPart}${dayjs.unix(startTimestamp).format('YYYYMMDD')}-${dayjs.unix(endTimestamp).format('YYYYMMDD')}.csv`,
+      csv
+    )
+  }
 
   return (
     <div className='space-y-6'>
@@ -117,23 +154,48 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
       <div className='space-y-3'>
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <div>
-            <h2 className='text-sm font-medium'>{t('Channel usage')}</h2>
+            <h2 className='text-sm font-medium'>
+              {isAdmin ? t('Settlement statement') : t('Channel usage')}
+            </h2>
             <p className='text-muted-foreground text-xs'>
-              {t(
-                'Usage for users on your current channels in the selected time range.'
-              )}
+              {isAdmin
+                ? t(
+                    'Query and export per-model settlement for the selected time range.'
+                  )
+                : t(
+                    'Usage for users on your current channels in the selected time range.'
+                  )}
             </p>
           </div>
-          <CompactDateTimeRangePicker
-            start={range.start}
-            end={range.end}
-            onChange={(next) =>
-              setRange({
-                start: next.start ?? range.start,
-                end: next.end ?? range.end,
-              })
-            }
-          />
+          <div className='flex flex-wrap items-center gap-2'>
+            <CompactDateTimeRangePicker
+              start={range.start}
+              end={range.end}
+              onChange={(next) =>
+                setRange({
+                  start: next.start ?? range.start,
+                  end: next.end ?? range.end,
+                })
+              }
+            />
+            {isAdmin ? (
+              <>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => {
+                    void usageQuery.refetch()
+                  }}
+                  disabled={usageQuery.isFetching}
+                >
+                  {t('Query statement')}
+                </Button>
+                <Button size='sm' onClick={exportStatement} disabled={!usage}>
+                  {t('Export statement')}
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
 
         {usageQuery.isLoading ? <LoadingState /> : null}
@@ -161,7 +223,7 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
               </div>
               <div className='rounded-md border p-3'>
                 <div className='text-muted-foreground text-xs'>
-                  {t('Channel cost')}
+                  {isAdmin ? t('Pending settlement amount') : t('Channel cost')}
                 </div>
                 <div className='text-lg font-medium'>
                   {formatQuota(usage.platform_quota)}
@@ -177,6 +239,19 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
                 <div className='text-lg font-medium'>{formatQuota(margin)}</div>
               </div>
             </div>
+            {isAdmin ? (
+              <div className='space-y-2'>
+                <h3 className='text-sm font-medium'>
+                  {t('Per-model statistics')}
+                </h3>
+                <div className='overflow-hidden rounded-md border'>
+                  <SettlementModelStatsTable
+                    models={usage.models ?? []}
+                    amountMode='pending'
+                  />
+                </div>
+              </div>
+            ) : null}
             {usage.users.length === 0 ? (
               <EmptyState
                 title={t('No usage in this range')}
@@ -185,11 +260,57 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
                 )}
               />
             ) : (
-              <StaticDataTable
-                columns={columns}
-                data={usage.users}
-                getRowKey={(row) => String(row.user_id)}
-              />
+              <div className='space-y-2'>
+                <p className='text-muted-foreground text-xs'>
+                  {t('Click a user to expand per-model statistics.')}
+                </p>
+                <StaticDataTable
+                  columns={columns}
+                  data={usage.users}
+                  getRowKey={(row) => String(row.user_id)}
+                  renderRow={(row) => {
+                    const expanded = expandedUserId === row.user_id
+                    return (
+                      <>
+                        <TableRow
+                          className='cursor-pointer'
+                          onClick={() =>
+                            setExpandedUserId(expanded ? null : row.user_id)
+                          }
+                        >
+                          {columns.map((column) => (
+                            <TableCell
+                              key={column.id}
+                              className={cn(
+                                'max-w-full min-w-0 overflow-hidden',
+                                typeof column.cellClassName === 'function'
+                                  ? column.cellClassName(row, 0)
+                                  : column.cellClassName
+                              )}
+                            >
+                              {column.cell?.(row, 0)}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                        {expanded ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={columns.length}
+                              className='bg-muted/30 p-3'
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <SettlementModelStatsTable
+                                models={row.models ?? []}
+                                amountMode={isAdmin ? 'pending' : 'fee'}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </>
+                    )
+                  }}
+                />
+              </div>
             )}
           </div>
         ) : null}
@@ -201,7 +322,10 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
           <EmptyState title={t('No settlement bills')} />
         ) : (
           (settlementQuery.data?.items ?? []).map((bill) => (
-            <div key={String(bill.id)} className='rounded-md border p-3 text-sm'>
+            <div
+              key={String(bill.id)}
+              className='rounded-md border p-3 text-sm'
+            >
               #{String(bill.id)} · {String(bill.status)} ·{' '}
               {formatQuota(Number(bill.platform_quota) || 0)}
             </div>

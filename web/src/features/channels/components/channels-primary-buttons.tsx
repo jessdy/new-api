@@ -29,6 +29,7 @@ import {
   SortAsc,
   RefreshCw,
   ArrowUpFromLine,
+  Receipt,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -65,6 +66,7 @@ import {
   handleUpdateAllBalances,
 } from '../lib'
 import { useChannels } from './channels-provider'
+import { ChannelPendingSettlementDialog } from './dialogs/channel-pending-settlement-dialog'
 
 export function ChannelsPrimaryButtons() {
   const { t } = useTranslation()
@@ -83,6 +85,7 @@ export function ChannelsPrimaryButtons() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
   const [isRepairingConsistency, setIsRepairingConsistency] = useState(false)
+  const [pendingSettlementOpen, setPendingSettlementOpen] = useState(false)
   const currentUser = useAuthStore((s) => s.auth.user)
   const canEditSensitive = hasPermission(
     currentUser,
@@ -146,6 +149,15 @@ export function ChannelsPrimaryButtons() {
             onCheckedChange={handleIdSortToggle}
           />
         </div>
+
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => setPendingSettlementOpen(true)}
+        >
+          <Receipt className='h-4 w-4' />
+          <span className='max-sm:hidden'>{t('Pending settlement')}</span>
+        </Button>
 
         {/* Create Channel */}
         <Tooltip>
@@ -324,6 +336,11 @@ export function ChannelsPrimaryButtons() {
             setIsRepairingConsistency(false)
           }
         }}
+      />
+
+      <ChannelPendingSettlementDialog
+        open={pendingSettlementOpen}
+        onOpenChange={setPendingSettlementOpen}
       />
     </>
   )
