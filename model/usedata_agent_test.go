@@ -269,9 +269,13 @@ func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
 	}).Error)
 
 	userOther := common.MapToJsonStr(map[string]any{
-		"cache_tokens": 2,
-		"model_price":  1.5,
-		"admin_info":   map[string]any{"platform_quota": 4},
+		"cache_tokens":     2,
+		"cache_ratio":      0.5,
+		"model_ratio":      1,
+		"completion_ratio": 2,
+		"group_ratio":      1,
+		"model_price":      0,
+		"admin_info":       map[string]any{"platform_quota": 4},
 	})
 	costOther := common.MapToJsonStr(map[string]any{
 		"cache_tokens": 1,
@@ -304,11 +308,14 @@ func TestGetAgentSettlementUsageSumsCurrentChannelUsersAndCost(t *testing.T) {
 	require.Len(t, usage.Users[0].Models, 2)
 	assert.Equal(t, "gpt-4.1", usage.Users[0].Models[0].ModelName)
 	assert.Equal(t, int64(20), usage.Users[0].Models[0].Quota)
-	assert.Equal(t, int64(8), usage.Users[0].Models[0].PromptTokens)
+	assert.Equal(t, int64(6), usage.Users[0].Models[0].PromptTokens)
 	assert.Equal(t, int64(2), usage.Users[0].Models[0].CompletionTokens)
 	assert.Equal(t, int64(2), usage.Users[0].Models[0].CacheTokens)
-	assert.Equal(t, 1.5, usage.Users[0].Models[0].UnitPrice)
+	assert.Equal(t, 2.0, usage.Users[0].Models[0].InputUnitPrice)
+	assert.Equal(t, 4.0, usage.Users[0].Models[0].OutputUnitPrice)
+	assert.Equal(t, 1.0, usage.Users[0].Models[0].CacheUnitPrice)
 	assert.Equal(t, "kimi-k3", usage.Users[0].Models[1].ModelName)
+	assert.True(t, usage.Users[0].Models[1].PerCall)
 	assert.Equal(t, 3.0, usage.Users[0].Models[1].UnitPrice)
 	require.Len(t, usage.Models, 2)
 	assert.Equal(t, "gpt-4.1", usage.Models[0].ModelName)

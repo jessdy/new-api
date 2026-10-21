@@ -48,7 +48,10 @@ const usage = {
           prompt_tokens: 8,
           completion_tokens: 2,
           cache_tokens: 2,
-          unit_price: 1.5,
+          unit_price: 2,
+          input_unit_price: 2,
+          output_unit_price: 4,
+          cache_unit_price: 1,
           quota: 20,
           platform_quota: 4,
         },
@@ -62,7 +65,10 @@ const usage = {
       prompt_tokens: 8,
       completion_tokens: 2,
       cache_tokens: 2,
-      unit_price: 1.5,
+      unit_price: 2,
+      input_unit_price: 2,
+      output_unit_price: 4,
+      cache_unit_price: 1,
       quota: 20,
       platform_quota: 4,
     },
@@ -112,7 +118,7 @@ it('lets an agent expand a user row to see per-model settlement details', async 
 
   await userEvent.click(userRow)
   expect(await screen.findByText('gpt-4.1')).toBeTruthy()
-  expect(screen.getByText('Unit price')).toBeTruthy()
+  expect(screen.getByText('Input unit price')).toBeTruthy()
   expect(screen.getByText('Fee')).toBeTruthy()
 })
 

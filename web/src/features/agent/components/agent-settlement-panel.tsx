@@ -136,6 +136,23 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
       models: usage.models ?? [],
       quota: usage.quota,
       platformQuota: usage.platform_quota,
+      labels: {
+        title: t('Settlement statement'),
+        period: t('Period'),
+        userFees: t('User fees'),
+        pending: t('Pending settlement amount'),
+        perModel: t('Per-model statistics'),
+        perUser: t('Per-user details'),
+        model: t('Model'),
+        user: t('User'),
+        input: t('Input Tokens'),
+        output: t('Output Tokens'),
+        cache: t('Cache Tokens'),
+        inputPrice: t('Input unit price'),
+        outputPrice: t('Output unit price'),
+        cachePrice: t('Cache unit price'),
+        fee: t('Fee'),
+      },
     })
     const agentPart = props.agentId ? `agent-${props.agentId}-` : ''
     downloadTextFile(

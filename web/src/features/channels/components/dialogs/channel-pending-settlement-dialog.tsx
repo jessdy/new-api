@@ -32,7 +32,6 @@ import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { SettlementModelStatsTable } from '@/features/agent/components/settlement-model-stats-table'
-import { settlementPendingQuota } from '@/features/agent/lib/settlement-stats'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -106,7 +105,7 @@ export function ChannelPendingSettlementDialog(props: {
       {
         id: 'pending',
         header: t('Pending settlement amount'),
-        cell: (row) => formatQuota(settlementPendingQuota(row)),
+        cell: (row) => formatQuota(row.platform_quota),
       },
     ],
     [expandedChannelId, t]
@@ -169,7 +168,7 @@ export function ChannelPendingSettlementDialog(props: {
                   {t('Pending settlement amount')}
                 </div>
                 <div className='text-lg font-medium'>
-                  {formatQuota(settlementPendingQuota(usage))}
+                  {formatQuota(usage.platform_quota)}
                 </div>
               </div>
               <div className='rounded-md border p-3'>

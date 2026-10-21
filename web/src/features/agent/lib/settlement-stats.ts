@@ -16,21 +16,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  formatBillingCurrencyFromUSD,
+  getCurrencyDisplay,
+} from '@/lib/currency'
+
 import type { SettlementModelStat } from '../api'
 
-export function settlementPendingQuota(row: {
-  quota: number
-  platform_quota: number
-}): number {
-  if (row.platform_quota > 0) return row.platform_quota
-  return row.quota
+const settlementMoneyOptions = {
+  abbreviate: false,
+  digitsLarge: 4,
+  digitsSmall: 6,
+} as const
+
+export function formatSettlementAmount(quota: number): string {
+  const { config } = getCurrencyDisplay()
+  const perUnit = config.quotaPerUnit > 0 ? config.quotaPerUnit : 500000
+  return formatBillingCurrencyFromUSD(quota / perUnit, settlementMoneyOptions)
 }
 
 export function formatSettlementUnitPrice(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '-'
-  return Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(
-    value
-  )
+  return formatBillingCurrencyFromUSD(value, settlementMoneyOptions)
 }
 
 function csvCell(value: string | number): string {
@@ -52,21 +59,49 @@ export function buildSettlementStatementCsv(params: {
   models: SettlementModelStat[]
   quota: number
   platformQuota: number
+  labels: {
+    title: string
+    period: string
+    userFees: string
+    pending: string
+    perModel: string
+    perUser: string
+    model: string
+    user: string
+    input: string
+    output: string
+    cache: string
+    inputPrice: string
+    outputPrice: string
+    cachePrice: string
+    fee: string
+  }
 }): string {
-  const lines = [
-    ['Settlement statement'],
-    ['Period', params.periodStart, params.periodEnd],
-    ['User fees', params.quota],
-    ['Pending settlement amount', params.platformQuota],
+  const labels = params.labels
+  const price = (model: SettlementModelStat, kind: 'input' | 'output' | 'cache') => {
+    if (model.per_call && kind === 'input') {
+      return formatSettlementUnitPrice(model.unit_price)
+    }
+    if (kind === 'input') return formatSettlementUnitPrice(model.input_unit_price)
+    if (kind === 'output') return formatSettlementUnitPrice(model.output_unit_price)
+    return formatSettlementUnitPrice(model.cache_unit_price)
+  }
+  const lines: Array<Array<string | number>> = [
+    [labels.title],
+    [labels.period, params.periodStart, params.periodEnd],
+    [labels.userFees, formatSettlementAmount(params.quota)],
+    [labels.pending, formatSettlementAmount(params.platformQuota)],
     [],
-    ['Per-model statistics'],
+    [labels.perModel],
     [
-      'Model',
-      'Input Tokens',
-      'Output Tokens',
-      'Cache Tokens',
-      'Unit price',
-      'Pending settlement amount',
+      labels.model,
+      labels.input,
+      labels.output,
+      labels.cache,
+      labels.inputPrice,
+      labels.outputPrice,
+      labels.cachePrice,
+      labels.pending,
     ],
   ]
   for (const model of params.models) {
@@ -75,21 +110,25 @@ export function buildSettlementStatementCsv(params: {
       model.prompt_tokens,
       model.completion_tokens,
       model.cache_tokens,
-      model.unit_price,
-      settlementPendingQuota(model),
+      price(model, 'input'),
+      price(model, 'output'),
+      price(model, 'cache'),
+      formatSettlementAmount(model.platform_quota),
     ])
   }
   lines.push([])
-  lines.push(['Per-user details'])
+  lines.push([labels.perUser])
   lines.push([
-    'User',
-    'Model',
-    'Input Tokens',
-    'Output Tokens',
-    'Cache Tokens',
-    'Unit price',
-    'Fee',
-    'Pending settlement amount',
+    labels.user,
+    labels.model,
+    labels.input,
+    labels.output,
+    labels.cache,
+    labels.inputPrice,
+    labels.outputPrice,
+    labels.cachePrice,
+    labels.fee,
+    labels.pending,
   ])
   for (const user of params.users) {
     const label = `#${user.user_id} ${user.username}`.trim()
@@ -100,9 +139,11 @@ export function buildSettlementStatementCsv(params: {
         model.prompt_tokens,
         model.completion_tokens,
         model.cache_tokens,
-        model.unit_price,
-        model.quota,
-        settlementPendingQuota(model),
+        price(model, 'input'),
+        price(model, 'output'),
+        price(model, 'cache'),
+        formatSettlementAmount(model.quota),
+        formatSettlementAmount(model.platform_quota),
       ])
     }
   }

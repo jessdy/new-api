@@ -15,6 +15,10 @@ type SettlementModelStat struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	CacheTokens      int64   `json:"cache_tokens"`
 	UnitPrice        float64 `json:"unit_price"`
+	InputUnitPrice   float64 `json:"input_unit_price"`
+	OutputUnitPrice  float64 `json:"output_unit_price"`
+	CacheUnitPrice   float64 `json:"cache_unit_price"`
+	PerCall          bool    `json:"per_call"`
 	Quota            int64   `json:"quota"`
 	PlatformQuota    int64   `json:"platform_quota"`
 }
@@ -68,9 +72,27 @@ type ChannelPendingSettlement struct {
 }
 
 type settlementModelAccum struct {
-	stat        SettlementModelStat
-	priceSum    float64
-	priceWeight float64
+	stat         SettlementModelStat
+	inputSum     float64
+	inputWeight  float64
+	outputSum    float64
+	outputWeight float64
+	cacheSum     float64
+	cacheWeight  float64
+	callSum      float64
+	callWeight   float64
+}
+
+type settlementLogFact struct {
+	platformQuota int64
+	inputTokens   int64
+	outputTokens  int64
+	cacheTokens   int64
+	perCall       bool
+	inputPrice    float64
+	outputPrice   float64
+	cachePrice    float64
+	callPrice     float64
 }
 
 type consumeLogSettlementRow struct {
@@ -137,19 +159,17 @@ func GetAgentSettlementUsage(agentId int, startTimestamp int64, endTimestamp int
 		if item.user.Username == "" && row.Username != "" {
 			item.user.Username = row.Username
 		}
-		prompt := int64(row.PromptTokens)
-		completion := int64(row.CompletionTokens)
 		quota := int64(row.Quota)
-		platformQuota, cacheTokens, modelPrice := consumeLogExtrasFromOther(row.Other)
+		fact := settlementFactFromLog(row.PromptTokens, row.CompletionTokens, row.Other)
 		item.user.Count++
 		item.user.Quota += quota
-		item.user.PlatformQuota += platformQuota
-		item.user.PromptTokens += prompt
-		item.user.CompletionTokens += completion
-		item.user.CacheTokens += cacheTokens
-		item.user.TokenUsed += prompt + completion
-		addSettlementModel(item.byModel, row.ModelName, prompt, completion, cacheTokens, quota, platformQuota, modelPrice)
-		addSettlementModel(overallModels, row.ModelName, prompt, completion, cacheTokens, quota, platformQuota, modelPrice)
+		item.user.PlatformQuota += fact.platformQuota
+		item.user.PromptTokens += fact.inputTokens
+		item.user.CompletionTokens += fact.outputTokens
+		item.user.CacheTokens += fact.cacheTokens
+		item.user.TokenUsed += fact.inputTokens + fact.outputTokens + fact.cacheTokens
+		addSettlementModel(item.byModel, row.ModelName, quota, fact)
+		addSettlementModel(overallModels, row.ModelName, quota, fact)
 	}
 
 	users := make([]AgentSettlementUsageUser, 0, len(byUser))
@@ -212,18 +232,16 @@ func GetChannelPendingSettlement(startTimestamp int64, endTimestamp int64) (Chan
 			byChannel[row.ChannelId] = item
 			channelIDs = append(channelIDs, row.ChannelId)
 		}
-		prompt := int64(row.PromptTokens)
-		completion := int64(row.CompletionTokens)
 		quota := int64(row.Quota)
-		platformQuota, cacheTokens, modelPrice := consumeLogExtrasFromOther(row.Other)
+		fact := settlementFactFromLog(row.PromptTokens, row.CompletionTokens, row.Other)
 		item.channel.Count++
 		item.channel.Quota += quota
-		item.channel.PlatformQuota += platformQuota
-		item.channel.PromptTokens += prompt
-		item.channel.CompletionTokens += completion
-		item.channel.CacheTokens += cacheTokens
-		addSettlementModel(item.byModel, row.ModelName, prompt, completion, cacheTokens, quota, platformQuota, modelPrice)
-		addSettlementModel(overallModels, row.ModelName, prompt, completion, cacheTokens, quota, platformQuota, modelPrice)
+		item.channel.PlatformQuota += fact.platformQuota
+		item.channel.PromptTokens += fact.inputTokens
+		item.channel.CompletionTokens += fact.outputTokens
+		item.channel.CacheTokens += fact.cacheTokens
+		addSettlementModel(item.byModel, row.ModelName, quota, fact)
+		addSettlementModel(overallModels, row.ModelName, quota, fact)
 	}
 
 	names := make(map[int]string, len(channelIDs))
@@ -271,7 +289,7 @@ func GetChannelPendingSettlement(startTimestamp int64, endTimestamp int64) (Chan
 	return usage, nil
 }
 
-func addSettlementModel(byModel map[string]*settlementModelAccum, modelName string, prompt, completion, cache, quota, platformQuota int64, price float64) {
+func addSettlementModel(byModel map[string]*settlementModelAccum, modelName string, quota int64, fact settlementLogFact) {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
 		modelName = "—"
@@ -282,26 +300,49 @@ func addSettlementModel(byModel map[string]*settlementModelAccum, modelName stri
 		byModel[modelName] = item
 	}
 	item.stat.Count++
-	item.stat.PromptTokens += prompt
-	item.stat.CompletionTokens += completion
-	item.stat.CacheTokens += cache
+	item.stat.PromptTokens += fact.inputTokens
+	item.stat.CompletionTokens += fact.outputTokens
+	item.stat.CacheTokens += fact.cacheTokens
 	item.stat.Quota += quota
-	item.stat.PlatformQuota += platformQuota
-	weight := float64(prompt + completion + cache)
-	if weight <= 0 {
-		weight = 1
+	item.stat.PlatformQuota += fact.platformQuota
+	if fact.perCall {
+		if fact.callPrice > 0 {
+			item.callSum += fact.callPrice
+			item.callWeight++
+		}
+		return
 	}
-	if price > 0 {
-		item.priceSum += price * weight
-		item.priceWeight += weight
+	if fact.inputTokens > 0 && fact.inputPrice > 0 {
+		item.inputSum += fact.inputPrice * float64(fact.inputTokens)
+		item.inputWeight += float64(fact.inputTokens)
+	}
+	if fact.outputTokens > 0 && fact.outputPrice > 0 {
+		item.outputSum += fact.outputPrice * float64(fact.outputTokens)
+		item.outputWeight += float64(fact.outputTokens)
+	}
+	if fact.cacheTokens > 0 && fact.cachePrice > 0 {
+		item.cacheSum += fact.cachePrice * float64(fact.cacheTokens)
+		item.cacheWeight += float64(fact.cacheTokens)
 	}
 }
 
 func finishSettlementModels(byModel map[string]*settlementModelAccum) []SettlementModelStat {
 	models := make([]SettlementModelStat, 0, len(byModel))
 	for _, item := range byModel {
-		if item.priceWeight > 0 {
-			item.stat.UnitPrice = item.priceSum / item.priceWeight
+		if item.inputWeight > 0 {
+			item.stat.InputUnitPrice = item.inputSum / item.inputWeight
+		}
+		if item.outputWeight > 0 {
+			item.stat.OutputUnitPrice = item.outputSum / item.outputWeight
+		}
+		if item.cacheWeight > 0 {
+			item.stat.CacheUnitPrice = item.cacheSum / item.cacheWeight
+		}
+		if item.callWeight > 0 && item.inputWeight == 0 && item.outputWeight == 0 && item.cacheWeight == 0 {
+			item.stat.PerCall = true
+			item.stat.UnitPrice = item.callSum / item.callWeight
+		} else {
+			item.stat.UnitPrice = item.stat.InputUnitPrice
 		}
 		models = append(models, item.stat)
 	}
@@ -317,20 +358,117 @@ func finishSettlementModels(byModel map[string]*settlementModelAccum) []Settleme
 	return models
 }
 
-func consumeLogExtrasFromOther(other string) (platformQuota int64, cacheTokens int64, modelPrice float64) {
+func settlementFactFromLog(promptTokens int, completionTokens int, other string) settlementLogFact {
+	fact := settlementLogFact{outputTokens: int64(completionTokens)}
 	if strings.TrimSpace(other) == "" {
-		return 0, 0, 0
+		fact.inputTokens = int64(promptTokens)
+		return fact
 	}
 	values, err := common.StrToMap(other)
 	if err != nil || values == nil {
-		return 0, 0, 0
+		fact.inputTokens = int64(promptTokens)
+		return fact
 	}
 	if admin, ok := values["admin_info"].(map[string]any); ok && admin != nil {
-		platformQuota = int64FromAny(admin["platform_quota"])
+		fact.platformQuota = int64FromAny(admin["platform_quota"])
 	}
-	cacheTokens = int64FromAny(values["cache_tokens"])
-	modelPrice = floatFromAny(values["model_price"])
-	return platformQuota, cacheTokens, modelPrice
+	cacheRead := int64FromAny(values["cache_tokens"])
+	cacheWrite := cacheWriteTokensFromOther(values)
+	fact.cacheTokens = cacheRead + cacheWrite
+	fact.inputTokens = int64(promptTokens)
+	claude, _ := values["claude"].(bool)
+	if !claude {
+		deducted := cacheRead + cacheWrite
+		if deducted > 0 && fact.inputTokens >= deducted {
+			fact.inputTokens -= deducted
+		}
+	}
+	group := settlementGroupRatio(values)
+	modelPrice := floatFromAny(values["model_price"])
+	if modelPrice > 0 {
+		fact.perCall = true
+		fact.callPrice = modelPrice * group
+		return fact
+	}
+	modelRatio := floatFromAny(values["model_ratio"])
+	if modelRatio <= 0 {
+		return fact
+	}
+	completionRatio := 1.0
+	if ratio, ok := optionalFloat(values["completion_ratio"]); ok {
+		completionRatio = ratio
+	}
+	inputPrice := modelRatio * 2 * group
+	fact.inputPrice = inputPrice
+	fact.outputPrice = inputPrice * completionRatio
+	fact.cachePrice = blendedCacheUnitPrice(values, inputPrice, cacheRead, cacheWrite)
+	return fact
+}
+
+func settlementGroupRatio(values map[string]any) float64 {
+	if ratio, ok := optionalFloat(values["user_group_ratio"]); ok && ratio != -1 && ratio > 0 {
+		return ratio
+	}
+	if ratio, ok := optionalFloat(values["group_ratio"]); ok && ratio > 0 {
+		return ratio
+	}
+	return 1
+}
+
+func cacheWriteTokensFromOther(values map[string]any) int64 {
+	creation := int64FromAny(values["cache_creation_tokens"])
+	five := int64FromAny(values["cache_creation_tokens_5m"])
+	hour := int64FromAny(values["cache_creation_tokens_1h"])
+	if five > 0 || hour > 0 {
+		split := five + hour
+		if creation > split {
+			return creation
+		}
+		return split
+	}
+	return creation
+}
+
+func blendedCacheUnitPrice(values map[string]any, inputPrice float64, cacheRead int64, cacheWrite int64) float64 {
+	total := cacheRead + cacheWrite
+	if total <= 0 || inputPrice <= 0 {
+		return 0
+	}
+	cacheRatio := 1.0
+	if ratio, ok := optionalFloat(values["cache_ratio"]); ok {
+		cacheRatio = ratio
+	}
+	readPrice := inputPrice * cacheRatio
+	if cacheWrite <= 0 {
+		return readPrice
+	}
+	creationRatio := 1.0
+	if ratio, ok := optionalFloat(values["cache_creation_ratio"]); ok {
+		creationRatio = ratio
+	}
+	five := int64FromAny(values["cache_creation_tokens_5m"])
+	hour := int64FromAny(values["cache_creation_tokens_1h"])
+	writePrice := inputPrice * creationRatio
+	if five > 0 || hour > 0 {
+		fiveRatio := creationRatio
+		if ratio, ok := optionalFloat(values["cache_creation_ratio_5m"]); ok {
+			fiveRatio = ratio
+		}
+		hourRatio := creationRatio
+		if ratio, ok := optionalFloat(values["cache_creation_ratio_1h"]); ok {
+			hourRatio = ratio
+		}
+		creation := int64FromAny(values["cache_creation_tokens"])
+		remaining := creation - five - hour
+		if remaining < 0 {
+			remaining = 0
+		}
+		weighted := float64(remaining)*creationRatio + float64(five)*fiveRatio + float64(hour)*hourRatio
+		if cacheWrite > 0 {
+			writePrice = inputPrice * weighted / float64(cacheWrite)
+		}
+	}
+	return (readPrice*float64(cacheRead) + writePrice*float64(cacheWrite)) / float64(total)
 }
 
 func int64FromAny(value any) int64 {
@@ -349,16 +487,21 @@ func int64FromAny(value any) int64 {
 }
 
 func floatFromAny(value any) float64 {
+	parsed, _ := optionalFloat(value)
+	return parsed
+}
+
+func optionalFloat(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
-		return typed
+		return typed, true
 	case float32:
-		return float64(typed)
+		return float64(typed), true
 	case int:
-		return float64(typed)
+		return float64(typed), true
 	case int64:
-		return float64(typed)
+		return float64(typed), true
 	default:
-		return 0
+		return 0, false
 	}
 }

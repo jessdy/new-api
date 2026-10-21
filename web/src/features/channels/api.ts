@@ -676,6 +676,10 @@ export type ChannelPendingSettlementModel = {
   completion_tokens: number
   cache_tokens: number
   unit_price: number
+  input_unit_price: number
+  output_unit_price: number
+  cache_unit_price: number
+  per_call?: boolean
   quota: number
   platform_quota: number
 }

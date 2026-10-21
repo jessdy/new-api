@@ -18,30 +18,47 @@ import { expect, test } from 'vitest'
 
 import {
   buildSettlementStatementCsv,
-  settlementPendingQuota,
+  formatSettlementAmount,
 } from './settlement-stats'
 
-test('pending quota uses platform quota when present', () => {
-  expect(settlementPendingQuota({ quota: 20, platform_quota: 7 })).toBe(7)
-  expect(settlementPendingQuota({ quota: 20, platform_quota: 0 })).toBe(20)
-})
+const labels = {
+  title: 'Settlement statement',
+  period: 'Period',
+  userFees: 'User fees',
+  pending: 'Pending settlement amount',
+  perModel: 'Per-model statistics',
+  perUser: 'Per-user details',
+  model: 'Model',
+  user: 'User',
+  input: 'Input Tokens',
+  output: 'Output Tokens',
+  cache: 'Cache Tokens',
+  inputPrice: 'Input unit price',
+  outputPrice: 'Output unit price',
+  cachePrice: 'Cache unit price',
+  fee: 'Fee',
+}
 
-test('settlement statement csv includes per-model and per-user rows', () => {
+test('settlement statement csv uses currency amounts that match the fee', () => {
   const csv = buildSettlementStatementCsv({
     periodStart: '2026-10-14 00:00:00',
     periodEnd: '2026-10-20 10:00:00',
-    quota: 30,
-    platformQuota: 13,
+    quota: 500000,
+    platformQuota: 250000,
+    labels,
     models: [
       {
         model_name: 'gpt-4.1',
         count: 1,
-        prompt_tokens: 8,
+        prompt_tokens: 6,
         completion_tokens: 2,
         cache_tokens: 2,
-        unit_price: 1.5,
-        quota: 20,
-        platform_quota: 4,
+        unit_price: 2,
+        input_unit_price: 2,
+        output_unit_price: 4,
+        cache_unit_price: 1,
+        quota: 500000,
+        platform_quota: 250000,
       },
     ],
     users: [
@@ -52,20 +69,27 @@ test('settlement statement csv includes per-model and per-user rows', () => {
           {
             model_name: 'gpt-4.1',
             count: 1,
-            prompt_tokens: 8,
+            prompt_tokens: 6,
             completion_tokens: 2,
             cache_tokens: 2,
-            unit_price: 1.5,
-            quota: 20,
-            platform_quota: 4,
+            unit_price: 2,
+            input_unit_price: 2,
+            output_unit_price: 4,
+            cache_unit_price: 1,
+            quota: 500000,
+            platform_quota: 250000,
           },
         ],
       },
     ],
   })
+  const fee = formatSettlementAmount(500000)
+  const pending = formatSettlementAmount(250000)
   expect(csv).toContain('Settlement statement')
-  expect(csv).toContain('gpt-4.1')
   expect(csv).toContain('#601 settle-user')
-  expect(csv).toContain('Pending settlement amount')
-  expect(csv).toContain('1.5')
+  expect(csv).toContain(fee)
+  expect(csv).toContain(pending)
+  expect(csv).not.toContain(',500000,')
+  expect(csv).not.toContain(',250000,')
+  expect(csv.split(pending).length - 1).toBeGreaterThan(1)
 })

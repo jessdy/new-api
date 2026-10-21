@@ -28,10 +28,7 @@ import { EmptyState } from '@/components/empty-state'
 import { formatNumber, formatQuota } from '@/lib/format'
 
 import type { SettlementModelStat } from '../api'
-import {
-  formatSettlementUnitPrice,
-  settlementPendingQuota,
-} from '../lib/settlement-stats'
+import { formatSettlementUnitPrice } from '../lib/settlement-stats'
 
 export function SettlementModelStatsTable(props: {
   models: SettlementModelStat[]
@@ -74,11 +71,30 @@ export function SettlementModelStatsTable(props: {
         cell: (row) => formatNumber(row.cache_tokens),
       },
       {
-        id: 'unit-price',
-        header: t('Unit price'),
+        id: 'input-price',
+        header: t('Input unit price'),
         className: staticDataTableClassNames.compactHeaderCellRight,
         cellClassName: staticDataTableClassNames.compactNumericCell,
-        cell: (row) => formatSettlementUnitPrice(row.unit_price),
+        cell: (row) =>
+          formatSettlementUnitPrice(
+            row.per_call ? row.unit_price : row.input_unit_price
+          ),
+      },
+      {
+        id: 'output-price',
+        header: t('Output unit price'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (row) =>
+          row.per_call ? '-' : formatSettlementUnitPrice(row.output_unit_price),
+      },
+      {
+        id: 'cache-price',
+        header: t('Cache unit price'),
+        className: staticDataTableClassNames.compactHeaderCellRight,
+        cellClassName: staticDataTableClassNames.compactNumericCell,
+        cell: (row) =>
+          row.per_call ? '-' : formatSettlementUnitPrice(row.cache_unit_price),
       },
       {
         id: 'amount',
@@ -88,9 +104,7 @@ export function SettlementModelStatsTable(props: {
         cell: (row) => (
           <span className='font-semibold tabular-nums'>
             {formatQuota(
-              props.amountMode === 'fee'
-                ? row.quota
-                : settlementPendingQuota(row)
+              props.amountMode === 'fee' ? row.quota : row.platform_quota
             )}
           </span>
         ),
