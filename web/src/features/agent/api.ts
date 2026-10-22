@@ -377,6 +377,7 @@ export type SettlementModelStat = {
   per_call?: boolean
   quota: number
   platform_quota: number
+  channel_quota?: number
 }
 
 export type AgentSettlementUsageUser = {
@@ -385,6 +386,7 @@ export type AgentSettlementUsageUser = {
   count: number
   quota: number
   platform_quota: number
+  channel_quota?: number
   token_used: number
   prompt_tokens: number
   completion_tokens: number
@@ -398,6 +400,7 @@ export type AgentSettlementUsage = {
   count: number
   quota: number
   platform_quota: number
+  channel_quota?: number
   token_used: number
   prompt_tokens: number
   completion_tokens: number

@@ -33,6 +33,7 @@ import { formatSettlementUnitPrice } from '../lib/settlement-stats'
 export function SettlementModelStatsTable(props: {
   models: SettlementModelStat[]
   amountMode: 'fee' | 'pending'
+  showChannelCost?: boolean
   emptyTitle?: string
 }) {
   const { t } = useTranslation()
@@ -109,8 +110,23 @@ export function SettlementModelStatsTable(props: {
           </span>
         ),
       },
+      ...(props.showChannelCost
+        ? [
+            {
+              id: 'channel-cost',
+              header: t('Channel cost'),
+              className: staticDataTableClassNames.compactHeaderCellRight,
+              cellClassName: staticDataTableClassNames.compactNumericCell,
+              cell: (row: SettlementModelStat) => (
+                <span className='font-semibold tabular-nums'>
+                  {formatQuota(row.channel_quota ?? 0)}
+                </span>
+              ),
+            } satisfies StaticDataTableColumn<SettlementModelStat>,
+          ]
+        : []),
     ],
-    [amountHeader, props.amountMode, t]
+    [amountHeader, props.amountMode, props.showChannelCost, t]
   )
 
   if (props.models.length === 0) {

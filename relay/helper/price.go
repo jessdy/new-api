@@ -197,6 +197,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	if err := PrepareAgentCostPricing(c, info, billingModelName, promptTokens, meta); err != nil {
 		return hosttypes.PriceData{}, err
 	}
+	if err := PrepareChannelCostPricing(c, info, billingModelName, promptTokens, meta); err != nil {
+		return hosttypes.PriceData{}, err
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
 	effectivePricing := effective.Pricing
 	hasPricingOverride := len(effectivePricing) > 0
@@ -359,6 +362,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 		return hosttypes.PriceData{}, modelPriceNotConfiguredError(pricingModelName, info.UserId)
 	}
 	if err := PrepareAgentCostPricing(c, info, pricingModelName, 0, nil); err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if err := PrepareChannelCostPricing(c, info, pricingModelName, 0, nil); err != nil {
 		return hosttypes.PriceData{}, err
 	}
 	groupRatioInfo := HandleGroupRatio(c, info)
@@ -599,36 +605,43 @@ func userPricingFloat(pricing model.PricingValues, key string) (float64, bool) {
 	}
 }
 
-func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
-	if info == nil || info.AgentId <= 0 {
-		return nil
+type independentCostPrep struct {
+	PriceData    *hosttypes.PriceData
+	Snapshot     *billingexpr.BillingSnapshot
+	RequestInput *billingexpr.RequestInput
+}
+
+func lookupNamedCostPricing(lookup func(string) (model.PricingValues, bool), modelName string, originName string) (model.PricingValues, string, bool) {
+	pricing, ok := lookup(modelName)
+	if ok {
+		return pricing, modelName, true
 	}
-	pricing, ok := model.GetAgentModelCostPricing(info.AgentId, modelName)
-	if !ok && info.OriginModelName != modelName {
-		pricing, ok = model.GetAgentModelCostPricing(info.AgentId, info.OriginModelName)
+	if originName != "" && originName != modelName {
+		pricing, ok = lookup(originName)
 		if ok {
-			modelName = info.OriginModelName
+			return pricing, originName, true
 		}
 	}
-	if !ok {
-		return nil
-	}
+	return nil, modelName, false
+}
 
+func prepareIndependentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta, pricing model.PricingValues, label string) (independentCostPrep, error) {
+	var result independentCostPrep
 	mode, _ := pricing["billing_setting.billing_mode"].(string)
 	if mode == billing_setting.BillingModeTieredExpr {
 		if info.RelayFormat == types.RelayFormatTask || info.RelayFormat == types.RelayFormatMjProxy {
-			return nil
+			return result, nil
 		}
 		expr, ok := pricing["billing_setting.billing_expr"].(string)
 		if !ok || strings.TrimSpace(expr) == "" {
-			return fmt.Errorf("agent cost for model %s has no billing expression", modelName)
+			return result, fmt.Errorf("%s for model %s has no billing expression", label, modelName)
 		}
 		if info.RelayFormat == types.RelayFormatOpenAIRealtime && billingexpr.UsesFixedPricing(expr) {
-			return fmt.Errorf("fixed pricing is not supported for Realtime requests")
+			return result, fmt.Errorf("fixed pricing is not supported for Realtime requests")
 		}
 		requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
 		if err != nil {
-			return err
+			return result, err
 		}
 		estimatedCompletionTokens := 0
 		if meta != nil {
@@ -643,13 +656,13 @@ func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 			Len: float64(promptTokens),
 		}, requestInput)
 		if err != nil {
-			return fmt.Errorf("agent cost for model %s failed: %w", modelName, err)
+			return result, fmt.Errorf("%s for model %s failed: %w", label, modelName, err)
 		}
 		estimatedQuota, err := billingexpr.QuotaRoundStrict(rawCost / 1_000_000 * common.QuotaPerUnit)
 		if err != nil {
-			return err
+			return result, err
 		}
-		info.AgentCostTieredBillingSnapshot = &billingexpr.BillingSnapshot{
+		result.Snapshot = &billingexpr.BillingSnapshot{
 			BillingMode:               billing_setting.BillingModeTieredExpr,
 			ModelName:                 modelName,
 			ExprString:                expr,
@@ -665,8 +678,8 @@ func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 			QuotaPerUnit:              common.QuotaPerUnit,
 			ExprVersion:               billingexpr.ExprVersion(expr),
 		}
-		info.AgentCostBillingRequestInput = &requestInput
-		return nil
+		result.RequestInput = &requestInput
+		return result, nil
 	}
 
 	modelPrice, usePrice := ratio_setting.GetModelPrice(modelName, false)
@@ -703,7 +716,7 @@ func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 	if value, exists := userPricingFloat(pricing, "AudioCompletionRatio"); exists {
 		audioCompletionRatio = value
 	}
-	info.AgentCostPriceData = &hosttypes.PriceData{
+	result.PriceData = &hosttypes.PriceData{
 		ModelPrice:           modelPrice,
 		ModelRatio:           modelRatio,
 		CompletionRatio:      completionRatio,
@@ -720,6 +733,46 @@ func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelN
 			GroupSpecialRatio: -1,
 		},
 	}
+	return result, nil
+}
+
+func PrepareAgentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
+	if info == nil || info.AgentId <= 0 {
+		return nil
+	}
+	pricing, resolvedName, ok := lookupNamedCostPricing(func(name string) (model.PricingValues, bool) {
+		return model.GetAgentModelCostPricing(info.AgentId, name)
+	}, modelName, info.OriginModelName)
+	if !ok {
+		return nil
+	}
+	result, err := prepareIndependentCostPricing(c, info, resolvedName, promptTokens, meta, pricing, "agent cost")
+	if err != nil {
+		return err
+	}
+	info.AgentCostPriceData = result.PriceData
+	info.AgentCostTieredBillingSnapshot = result.Snapshot
+	info.AgentCostBillingRequestInput = result.RequestInput
+	return nil
+}
+
+func PrepareChannelCostPricing(c *gin.Context, info *relaycommon.RelayInfo, modelName string, promptTokens int, meta *types.TokenCountMeta) error {
+	if info == nil || info.GetChannelID() <= 0 {
+		return nil
+	}
+	pricing, resolvedName, ok := lookupNamedCostPricing(func(name string) (model.PricingValues, bool) {
+		return model.GetChannelModelCostPricing(info.GetChannelID(), name)
+	}, modelName, info.OriginModelName)
+	if !ok {
+		return nil
+	}
+	result, err := prepareIndependentCostPricing(c, info, resolvedName, promptTokens, meta, pricing, "channel cost")
+	if err != nil {
+		return err
+	}
+	info.ChannelCostPriceData = result.PriceData
+	info.ChannelCostTieredBillingSnapshot = result.Snapshot
+	info.ChannelCostBillingRequestInput = result.RequestInput
 	return nil
 }
 
@@ -818,4 +871,82 @@ func SetAgentTaskPlatformQuota(info *relaycommon.RelayInfo) {
 		info.QuotaClamp = clamp
 	}
 	info.PlatformQuota = quota
+}
+
+func PrepareChannelTaskCostPricing(info *relaycommon.RelayInfo, facts map[string]any) error {
+	if info == nil || info.GetChannelID() <= 0 {
+		return nil
+	}
+	modelName := info.GetBillingModelName()
+	pricing, resolvedName, ok := lookupNamedCostPricing(func(name string) (model.PricingValues, bool) {
+		return model.GetChannelModelCostPricing(info.GetChannelID(), name)
+	}, modelName, info.OriginModelName)
+	if !ok {
+		return nil
+	}
+	mode, _ := pricing["billing_setting.billing_mode"].(string)
+	if mode != billing_setting.BillingModeTieredExpr {
+		return nil
+	}
+	expression, ok := pricing["billing_setting.billing_expr"].(string)
+	if !ok || strings.TrimSpace(expression) == "" {
+		return fmt.Errorf("channel cost for model %s has no billing expression", resolvedName)
+	}
+	if billingexpr.UsesFixedPricing(expression) {
+		return fmt.Errorf("fixed pricing is not supported for task usage expressions")
+	}
+	cost, trace, err := billingexpr.RunExprWithRequest(
+		expression,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		return fmt.Errorf("channel cost for model %s failed: %w", resolvedName, err)
+	}
+	quota, clamp := common.QuotaRoundChecked(cost * common.QuotaPerUnit)
+	if clamp != nil {
+		info.QuotaClamp = clamp
+	}
+	info.ChannelCostTieredBillingSnapshot = &billingexpr.BillingSnapshot{
+		BillingMode:               billing_setting.BillingModeTieredExpr,
+		ModelName:                 resolvedName,
+		ExprString:                expression,
+		ExprHash:                  billingexpr.ExprHashString(expression),
+		GroupRatio:                1,
+		EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit,
+		EstimatedQuotaAfterGroup:  quota,
+		EstimatedTier:             trace.MatchedTier,
+		QuotaPerUnit:              common.QuotaPerUnit,
+		ExprVersion:               billingexpr.ExprVersion(expression),
+		TaskUsageBilling:          true,
+		UsageFacts:                maps.Clone(facts),
+	}
+	info.ChannelQuota = quota
+	return nil
+}
+
+func SetChannelTaskQuota(info *relaycommon.RelayInfo) {
+	if info == nil || info.ChannelQuota > 0 {
+		return
+	}
+	if snapshot := info.ChannelCostTieredBillingSnapshot; snapshot != nil {
+		info.ChannelQuota = snapshot.EstimatedQuotaAfterGroup
+		return
+	}
+	cost := info.ChannelCostPriceData
+	if cost == nil {
+		return
+	}
+	baseQuota := cost.ModelRatio / 2 * common.QuotaPerUnit
+	if cost.UsePrice {
+		baseQuota = cost.ModelPrice * common.QuotaPerUnit
+	}
+	for key, ratio := range info.PriceData.OtherRatios() {
+		cost.AddOtherRatio(key, ratio)
+	}
+	quota, clamp := common.QuotaFromFloatChecked(cost.ApplyOtherRatiosToFloat(baseQuota))
+	if clamp != nil {
+		info.QuotaClamp = clamp
+	}
+	info.ChannelQuota = quota
 }

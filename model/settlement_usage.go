@@ -21,6 +21,7 @@ type SettlementModelStat struct {
 	PerCall          bool    `json:"per_call"`
 	Quota            int64   `json:"quota"`
 	PlatformQuota    int64   `json:"platform_quota"`
+	ChannelQuota     int64   `json:"channel_quota"`
 }
 
 type AgentSettlementUsageUser struct {
@@ -29,6 +30,7 @@ type AgentSettlementUsageUser struct {
 	Count            int                   `json:"count"`
 	Quota            int64                 `json:"quota"`
 	PlatformQuota    int64                 `json:"platform_quota"`
+	ChannelQuota     int64                 `json:"channel_quota"`
 	TokenUsed        int64                 `json:"token_used"`
 	PromptTokens     int64                 `json:"prompt_tokens"`
 	CompletionTokens int64                 `json:"completion_tokens"`
@@ -42,6 +44,7 @@ type AgentSettlementUsage struct {
 	Count            int64                      `json:"count"`
 	Quota            int64                      `json:"quota"`
 	PlatformQuota    int64                      `json:"platform_quota"`
+	ChannelQuota     int64                      `json:"channel_quota"`
 	TokenUsed        int64                      `json:"token_used"`
 	PromptTokens     int64                      `json:"prompt_tokens"`
 	CompletionTokens int64                      `json:"completion_tokens"`
@@ -54,6 +57,7 @@ type ChannelPendingSettlementChannel struct {
 	Count            int                   `json:"count"`
 	Quota            int64                 `json:"quota"`
 	PlatformQuota    int64                 `json:"platform_quota"`
+	ChannelQuota     int64                 `json:"channel_quota"`
 	PromptTokens     int64                 `json:"prompt_tokens"`
 	CompletionTokens int64                 `json:"completion_tokens"`
 	CacheTokens      int64                 `json:"cache_tokens"`
@@ -66,6 +70,7 @@ type ChannelPendingSettlement struct {
 	Count            int64                             `json:"count"`
 	Quota            int64                             `json:"quota"`
 	PlatformQuota    int64                             `json:"platform_quota"`
+	ChannelQuota     int64                             `json:"channel_quota"`
 	PromptTokens     int64                             `json:"prompt_tokens"`
 	CompletionTokens int64                             `json:"completion_tokens"`
 	CacheTokens      int64                             `json:"cache_tokens"`
@@ -85,6 +90,7 @@ type settlementModelAccum struct {
 
 type settlementLogFact struct {
 	platformQuota int64
+	channelQuota  int64
 	inputTokens   int64
 	outputTokens  int64
 	cacheTokens   int64
@@ -164,6 +170,7 @@ func GetAgentSettlementUsage(agentId int, startTimestamp int64, endTimestamp int
 		item.user.Count++
 		item.user.Quota += quota
 		item.user.PlatformQuota += fact.platformQuota
+		item.user.ChannelQuota += fact.channelQuota
 		item.user.PromptTokens += fact.inputTokens
 		item.user.CompletionTokens += fact.outputTokens
 		item.user.CacheTokens += fact.cacheTokens
@@ -179,6 +186,7 @@ func GetAgentSettlementUsage(agentId int, startTimestamp int64, endTimestamp int
 		usage.Count += int64(item.user.Count)
 		usage.Quota += item.user.Quota
 		usage.PlatformQuota += item.user.PlatformQuota
+		usage.ChannelQuota += item.user.ChannelQuota
 		usage.TokenUsed += item.user.TokenUsed
 		usage.PromptTokens += item.user.PromptTokens
 		usage.CompletionTokens += item.user.CompletionTokens
@@ -237,6 +245,7 @@ func GetChannelPendingSettlement(startTimestamp int64, endTimestamp int64) (Chan
 		item.channel.Count++
 		item.channel.Quota += quota
 		item.channel.PlatformQuota += fact.platformQuota
+		item.channel.ChannelQuota += fact.channelQuota
 		item.channel.PromptTokens += fact.inputTokens
 		item.channel.CompletionTokens += fact.outputTokens
 		item.channel.CacheTokens += fact.cacheTokens
@@ -266,6 +275,7 @@ func GetChannelPendingSettlement(startTimestamp int64, endTimestamp int64) (Chan
 		usage.Count += int64(item.channel.Count)
 		usage.Quota += item.channel.Quota
 		usage.PlatformQuota += item.channel.PlatformQuota
+		usage.ChannelQuota += item.channel.ChannelQuota
 		usage.PromptTokens += item.channel.PromptTokens
 		usage.CompletionTokens += item.channel.CompletionTokens
 		usage.CacheTokens += item.channel.CacheTokens
@@ -305,6 +315,7 @@ func addSettlementModel(byModel map[string]*settlementModelAccum, modelName stri
 	item.stat.CacheTokens += fact.cacheTokens
 	item.stat.Quota += quota
 	item.stat.PlatformQuota += fact.platformQuota
+	item.stat.ChannelQuota += fact.channelQuota
 	if fact.perCall {
 		if fact.callPrice > 0 {
 			item.callSum += fact.callPrice
@@ -371,6 +382,7 @@ func settlementFactFromLog(promptTokens int, completionTokens int, other string)
 	}
 	if admin, ok := values["admin_info"].(map[string]any); ok && admin != nil {
 		fact.platformQuota = int64FromAny(admin["platform_quota"])
+		fact.channelQuota = int64FromAny(admin["channel_quota"])
 	}
 	cacheRead := int64FromAny(values["cache_tokens"])
 	cacheWrite := cacheWriteTokensFromOther(values)

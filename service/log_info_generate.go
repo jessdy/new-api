@@ -126,6 +126,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	appendAgentInfo(relayInfo, other)
+	appendChannelCostInfo(relayInfo, other)
 	return other
 }
 
@@ -141,6 +142,13 @@ func appendAgentInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
 	if relayInfo.AgentDiscountRatio > 0 {
 		other.SetAdmin("agent_discount_ratio", relayInfo.AgentDiscountRatio)
 	}
+}
+
+func appendChannelCostInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
+	if relayInfo == nil || other == nil || relayInfo.ChannelQuota <= 0 {
+		return
+	}
+	other.SetAdmin("channel_quota", relayInfo.ChannelQuota)
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
@@ -320,6 +328,7 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData hosttypes.P
 		other.SetPublic("user_group_ratio", priceData.GroupRatioInfo.GroupSpecialRatio)
 	}
 	appendRequestPath(nil, relayInfo, other)
+	appendChannelCostInfo(relayInfo, other)
 	return other
 }
 

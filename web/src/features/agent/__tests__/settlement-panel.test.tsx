@@ -37,6 +37,7 @@ const usage = {
       count: 2,
       quota: 30,
       platform_quota: 13,
+      channel_quota: 7,
       token_used: 14,
       prompt_tokens: 11,
       completion_tokens: 3,
@@ -54,6 +55,7 @@ const usage = {
           cache_unit_price: 1,
           quota: 20,
           platform_quota: 4,
+          channel_quota: 2,
         },
       ],
     },
@@ -71,11 +73,13 @@ const usage = {
       cache_unit_price: 1,
       quota: 20,
       platform_quota: 4,
+      channel_quota: 2,
     },
   ],
   count: 2,
   quota: 30,
   platform_quota: 13,
+  channel_quota: 7,
   token_used: 14,
   prompt_tokens: 11,
   completion_tokens: 3,
@@ -140,4 +144,5 @@ it('lets an admin query and export a settlement statement', async () => {
   expect(
     screen.getAllByText('Pending settlement amount').length
   ).toBeGreaterThan(0)
+  expect(screen.getAllByText('Channel cost').length).toBeGreaterThan(0)
 })

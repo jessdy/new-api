@@ -37,6 +37,11 @@ import {
   stringifyAdvancedCustomConfig,
   validateAdvancedCustomConfig,
 } from './advanced-custom'
+import {
+  parseChannelCostPricing,
+  pruneChannelCostPricing,
+  stringifyChannelCostPricing,
+} from './channel-cost-pricing'
 
 // ============================================================================
 // Form Validation Schema
@@ -134,6 +139,17 @@ function isOptionalModelMapping(value: string | undefined): boolean {
   }
 }
 
+function isOptionalCostPricing(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    if (!isJsonObjectValue(parsed)) return false
+    return Object.values(parsed).every((item) => isJsonObjectValue(item))
+  } catch {
+    return false
+  }
+}
+
 function isOptionalStatusCodeMapping(value: string | undefined): boolean {
   try {
     const parsed = parseOptionalJson(value)
@@ -213,6 +229,13 @@ export const channelFormSchema = z
       .refine(
         isOptionalModelMapping,
         'Model mapping must be a JSON object with string values'
+      ),
+    cost_pricing: z
+      .string()
+      .optional()
+      .refine(
+        isOptionalCostPricing,
+        'Cost pricing must be a JSON object of model prices'
       ),
     priority: z.number().optional(),
     weight: z.number().optional(),
@@ -420,8 +443,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   openai_organization: '',
   models: '',
   group: ['default'],
-  model_mapping: '',
-  priority: 0,
+    model_mapping: '',
+    cost_pricing: '',
+    priority: 0,
   weight: 0,
   test_model: '',
   auto_ban: 1,
@@ -574,6 +598,7 @@ export function transformChannelToFormDefaults(
     models: channel.models || '',
     group: parseGroups(channel.group || 'default'),
     model_mapping: channel.model_mapping || '',
+    cost_pricing: channel.cost_pricing || '',
     priority: channel.priority || 0,
     weight: channel.weight || 0,
     test_model: channel.test_model || '',
@@ -809,6 +834,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     models: formData.models,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
+    cost_pricing: normalizeCostPricingPayload(formData) || null,
     priority: formData.priority || null,
     weight: formData.weight || null,
     test_model: formData.test_model || null,
@@ -857,6 +883,7 @@ export function transformFormDataToUpdatePayload(
     models: formData.models,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
+    cost_pricing: normalizeCostPricingPayload(formData) || null,
     priority: formData.priority ?? 0,
     weight: formData.weight ?? 0,
     test_model: formData.test_model || null,
@@ -890,6 +917,7 @@ export function transformFormDataToUpdatePayload(
   payload.tag = formData.tag || ''
   payload.remark = formData.remark || ''
   payload.model_mapping = formData.model_mapping || ''
+  payload.cost_pricing = normalizeCostPricingPayload(formData)
   payload.status_code_mapping = formData.status_code_mapping || ''
   payload.param_override = formData.param_override || ''
   payload.header_override = formData.header_override || ''
@@ -931,6 +959,15 @@ export function parseModels(models: string): string[] {
     .split(',')
     .map((m) => m.trim())
     .filter((m) => m.length > 0)
+}
+
+function normalizeCostPricingPayload(formData: ChannelFormValues): string {
+  return stringifyChannelCostPricing(
+    pruneChannelCostPricing(
+      parseChannelCostPricing(formData.cost_pricing),
+      parseModels(formData.models)
+    )
+  )
 }
 
 /**

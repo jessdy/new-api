@@ -117,11 +117,21 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
       },
       {
         id: 'cost',
-        header: t('Channel cost'),
+        header: isAdmin ? t('Pending settlement amount') : t('Channel cost'),
         cell: (row) => formatQuota(row.platform_quota),
       },
+      ...(isAdmin
+        ? [
+            {
+              id: 'channel-cost',
+              header: t('Channel cost'),
+              cell: (row: AgentSettlementUsageUser) =>
+                formatQuota(row.channel_quota ?? 0),
+            } satisfies StaticDataTableColumn<AgentSettlementUsageUser>,
+          ]
+        : []),
     ],
-    [expandedUserId, t]
+    [expandedUserId, isAdmin, t]
   )
 
   const usage = usageQuery.data
@@ -136,11 +146,13 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
       models: usage.models ?? [],
       quota: usage.quota,
       platformQuota: usage.platform_quota,
+      channelQuota: usage.channel_quota ?? 0,
       labels: {
         title: t('Settlement statement'),
         period: t('Period'),
         userFees: t('User fees'),
         pending: t('Pending settlement amount'),
+        channelCost: t('Channel cost'),
         perModel: t('Per-model statistics'),
         perUser: t('Per-user details'),
         model: t('Model'),
@@ -226,7 +238,11 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
         ) : null}
         {usage ? (
           <div className='space-y-4'>
-            <div className='grid gap-3 sm:grid-cols-3'>
+            <div
+              className={
+                isAdmin ? 'grid gap-3 sm:grid-cols-4' : 'grid gap-3 sm:grid-cols-3'
+              }
+            >
               <div className='rounded-md border p-3'>
                 <div className='text-muted-foreground text-xs'>
                   {t('User fees')}
@@ -249,6 +265,16 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
                   {formatNumber(usage.token_used)} {t('Tokens')}
                 </div>
               </div>
+              {isAdmin ? (
+                <div className='rounded-md border p-3'>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Channel cost')}
+                  </div>
+                  <div className='text-lg font-medium'>
+                    {formatQuota(usage.channel_quota ?? 0)}
+                  </div>
+                </div>
+              ) : null}
               <div className='rounded-md border p-3'>
                 <div className='text-muted-foreground text-xs'>
                   {t('Gross margin')}
@@ -265,6 +291,7 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
                   <SettlementModelStatsTable
                     models={usage.models ?? []}
                     amountMode='pending'
+                    showChannelCost
                   />
                 </div>
               </div>
@@ -319,6 +346,7 @@ export function AgentSettlementPanel(props: { agentId?: number }) {
                               <SettlementModelStatsTable
                                 models={row.models ?? []}
                                 amountMode={isAdmin ? 'pending' : 'fee'}
+                                showChannelCost={isAdmin}
                               />
                             </TableCell>
                           </TableRow>

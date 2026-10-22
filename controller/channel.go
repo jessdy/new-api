@@ -536,6 +536,10 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		}
 	}
 
+	if err := channel.NormalizeCostPricing(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

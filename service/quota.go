@@ -194,6 +194,55 @@ func setAgentRealtimePlatformQuota(relayInfo *relaycommon.RelayInfo, usage *dto.
 	relayInfo.PlatformQuota = quota
 }
 
+func setChannelRealtimeQuota(relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) {
+	if relayInfo == nil || relayInfo.GetChannelID() <= 0 || usage == nil {
+		return
+	}
+	if snapshot := relayInfo.ChannelCostTieredBillingSnapshot; snapshot != nil {
+		requestInput := billingexpr.RequestInput{}
+		if relayInfo.ChannelCostBillingRequestInput != nil {
+			requestInput = *relayInfo.ChannelCostBillingRequestInput
+		}
+		result, err := billingexpr.ComputeTieredQuotaWithRequest(
+			snapshot,
+			buildRealtimeTieredTokenParams(usage, snapshot.ExprString),
+			requestInput,
+		)
+		if err != nil {
+			common.SysError(fmt.Sprintf("channel realtime cost settlement failed channel=%d model=%s: %s", relayInfo.GetChannelID(), snapshot.ModelName, err))
+			relayInfo.ChannelQuota = snapshot.EstimatedQuotaAfterGroup
+			return
+		}
+		noteQuotaClamp(relayInfo, result.Clamp)
+		relayInfo.ChannelQuota = result.ActualQuotaAfterGroup
+		return
+	}
+	cost := relayInfo.ChannelCostPriceData
+	if cost == nil {
+		return
+	}
+	quota, clamp := calculateAudioQuota(QuotaInfo{
+		InputDetails: TokenDetails{
+			TextTokens:  usage.InputTokenDetails.TextTokens,
+			AudioTokens: usage.InputTokenDetails.AudioTokens,
+		},
+		OutputDetails: TokenDetails{
+			TextTokens:  usage.OutputTokenDetails.TextTokens,
+			AudioTokens: usage.OutputTokenDetails.AudioTokens,
+		},
+		ModelName:            relayInfo.GetBillingModelName(),
+		UsePrice:             cost.UsePrice,
+		ModelPrice:           cost.ModelPrice,
+		ModelRatio:           cost.ModelRatio,
+		CompletionRatio:      cost.CompletionRatio,
+		AudioRatio:           cost.AudioRatio,
+		AudioCompletionRatio: cost.AudioCompletionRatio,
+		GroupRatio:           1,
+	})
+	noteQuotaClamp(relayInfo, clamp)
+	relayInfo.ChannelQuota = quota
+}
+
 func buildRealtimeTieredTokenParams(usage *dto.RealtimeUsage, expression string) billingexpr.TokenParams {
 	if usage == nil {
 		return billingexpr.TokenParams{}
@@ -273,6 +322,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		quota = tieredQuota
 	}
 	setAgentRealtimePlatformQuota(relayInfo, usage)
+	setChannelRealtimeQuota(relayInfo, usage)
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -434,6 +484,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	SetAgentTextPlatformQuota(ctx, relayInfo, usage, false)
+	SetChannelTextQuota(ctx, relayInfo, usage, false)
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}

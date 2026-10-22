@@ -59,11 +59,13 @@ export function buildSettlementStatementCsv(params: {
   models: SettlementModelStat[]
   quota: number
   platformQuota: number
+  channelQuota?: number
   labels: {
     title: string
     period: string
     userFees: string
     pending: string
+    channelCost?: string
     perModel: string
     perUser: string
     model: string
@@ -78,6 +80,7 @@ export function buildSettlementStatementCsv(params: {
   }
 }): string {
   const labels = params.labels
+  const includeChannelCost = Boolean(labels.channelCost)
   const price = (model: SettlementModelStat, kind: 'input' | 'output' | 'cache') => {
     if (model.per_call && kind === 'input') {
       return formatSettlementUnitPrice(model.unit_price)
@@ -91,19 +94,26 @@ export function buildSettlementStatementCsv(params: {
     [labels.period, params.periodStart, params.periodEnd],
     [labels.userFees, formatSettlementAmount(params.quota)],
     [labels.pending, formatSettlementAmount(params.platformQuota)],
-    [],
-    [labels.perModel],
-    [
-      labels.model,
-      labels.input,
-      labels.output,
-      labels.cache,
-      labels.inputPrice,
-      labels.outputPrice,
-      labels.cachePrice,
-      labels.pending,
-    ],
   ]
+  if (includeChannelCost) {
+    lines.push([
+      labels.channelCost ?? '',
+      formatSettlementAmount(params.channelQuota ?? 0),
+    ])
+  }
+  lines.push([])
+  lines.push([labels.perModel])
+  lines.push([
+    labels.model,
+    labels.input,
+    labels.output,
+    labels.cache,
+    labels.inputPrice,
+    labels.outputPrice,
+    labels.cachePrice,
+    labels.pending,
+    ...(includeChannelCost ? [labels.channelCost ?? ''] : []),
+  ])
   for (const model of params.models) {
     lines.push([
       model.model_name,
@@ -114,6 +124,9 @@ export function buildSettlementStatementCsv(params: {
       price(model, 'output'),
       price(model, 'cache'),
       formatSettlementAmount(model.platform_quota),
+      ...(includeChannelCost
+        ? [formatSettlementAmount(model.channel_quota ?? 0)]
+        : []),
     ])
   }
   lines.push([])
@@ -129,6 +142,7 @@ export function buildSettlementStatementCsv(params: {
     labels.cachePrice,
     labels.fee,
     labels.pending,
+    ...(includeChannelCost ? [labels.channelCost ?? ''] : []),
   ])
   for (const user of params.users) {
     const label = `#${user.user_id} ${user.username}`.trim()
@@ -144,6 +158,9 @@ export function buildSettlementStatementCsv(params: {
         price(model, 'cache'),
         formatSettlementAmount(model.quota),
         formatSettlementAmount(model.platform_quota),
+        ...(includeChannelCost
+          ? [formatSettlementAmount(model.channel_quota ?? 0)]
+          : []),
       ])
     }
   }

@@ -682,6 +682,7 @@ export type ChannelPendingSettlementModel = {
   per_call?: boolean
   quota: number
   platform_quota: number
+  channel_quota?: number
 }
 
 export type ChannelPendingSettlementChannel = {
@@ -690,6 +691,7 @@ export type ChannelPendingSettlementChannel = {
   count: number
   quota: number
   platform_quota: number
+  channel_quota?: number
   prompt_tokens: number
   completion_tokens: number
   cache_tokens: number
@@ -702,6 +704,7 @@ export type ChannelPendingSettlement = {
   count: number
   quota: number
   platform_quota: number
+  channel_quota?: number
   prompt_tokens: number
   completion_tokens: number
   cache_tokens: number

@@ -200,6 +200,7 @@ import {
   ChannelApiAccessSection,
   ChannelAuthSection,
   ChannelBasicSection,
+  ChannelCostPricesField,
   ChannelEditorLoadingState,
   ChannelModelsSection,
 } from './sections'
@@ -3720,6 +3721,23 @@ export function ChannelMutateDrawer({
                                       />
                                     )}
                                   </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className='border-border/60 rounded-lg border p-4'>
+                            <FormField
+                              control={form.control}
+                              name='cost_pricing'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <ChannelCostPricesField
+                                    models={currentModelsArray}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                  />
                                   <FormMessage />
                                 </FormItem>
                               )}

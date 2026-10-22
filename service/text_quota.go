@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -458,6 +459,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	SetAgentTextPlatformQuota(ctx, relayInfo, billingUsage, summary.IsClaudeUsageSemantic)
+	SetChannelTextQuota(ctx, relayInfo, billingUsage, summary.IsClaudeUsageSemantic)
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
@@ -557,44 +559,85 @@ func SetAgentTextPlatformQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	if relayInfo == nil || relayInfo.AgentId <= 0 {
 		return
 	}
-	if snap := relayInfo.AgentCostTieredBillingSnapshot; snap != nil {
+	if relayInfo.AgentCostTieredBillingSnapshot == nil && relayInfo.AgentCostPriceData == nil {
+		return
+	}
+	relayInfo.PlatformQuota = settleIndependentTextQuota(
+		ctx,
+		relayInfo,
+		usage,
+		isClaudeUsageSemantic,
+		relayInfo.AgentCostTieredBillingSnapshot,
+		relayInfo.AgentCostBillingRequestInput,
+		relayInfo.AgentCostPriceData,
+		fmt.Sprintf("agent cost settlement failed agent=%d", relayInfo.AgentId),
+	)
+}
+
+func SetChannelTextQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, isClaudeUsageSemantic bool) {
+	if relayInfo == nil || relayInfo.GetChannelID() <= 0 {
+		return
+	}
+	if relayInfo.ChannelCostTieredBillingSnapshot == nil && relayInfo.ChannelCostPriceData == nil {
+		return
+	}
+	relayInfo.ChannelQuota = settleIndependentTextQuota(
+		ctx,
+		relayInfo,
+		usage,
+		isClaudeUsageSemantic,
+		relayInfo.ChannelCostTieredBillingSnapshot,
+		relayInfo.ChannelCostBillingRequestInput,
+		relayInfo.ChannelCostPriceData,
+		fmt.Sprintf("channel cost settlement failed channel=%d", relayInfo.GetChannelID()),
+	)
+}
+
+func settleIndependentTextQuota(
+	ctx *gin.Context,
+	relayInfo *relaycommon.RelayInfo,
+	usage *dto.Usage,
+	isClaudeUsageSemantic bool,
+	snapshot *billingexpr.BillingSnapshot,
+	requestInput *billingexpr.RequestInput,
+	priceData *hosttypes.PriceData,
+	errorPrefix string,
+) int {
+	if snapshot != nil {
 		if usage == nil {
-			if !billingexpr.UsesFixedPricing(snap.ExprString) {
-				return
+			if !billingexpr.UsesFixedPricing(snapshot.ExprString) {
+				return 0
 			}
 			usage = &dto.Usage{
-				PromptTokens:     snap.EstimatedPromptTokens,
-				CompletionTokens: snap.EstimatedCompletionTokens,
-				TotalTokens:      snap.EstimatedPromptTokens + snap.EstimatedCompletionTokens,
+				PromptTokens:     snapshot.EstimatedPromptTokens,
+				CompletionTokens: snapshot.EstimatedCompletionTokens,
+				TotalTokens:      snapshot.EstimatedPromptTokens + snapshot.EstimatedCompletionTokens,
 			}
 		}
-		requestInput := billingexpr.RequestInput{}
-		if relayInfo.AgentCostBillingRequestInput != nil {
-			requestInput = *relayInfo.AgentCostBillingRequestInput
+		input := billingexpr.RequestInput{}
+		if requestInput != nil {
+			input = *requestInput
 		}
-		params := BuildTieredTokenParams(usage, isClaudeUsageSemantic, billingexpr.UsedVars(snap.ExprString))
-		result, err := billingexpr.ComputeTieredQuotaWithRequest(snap, params, requestInput)
+		params := BuildTieredTokenParams(usage, isClaudeUsageSemantic, billingexpr.UsedVars(snapshot.ExprString))
+		result, err := billingexpr.ComputeTieredQuotaWithRequest(snapshot, params, input)
 		if err != nil {
-			common.SysError(fmt.Sprintf("agent cost settlement failed agent=%d model=%s: %s", relayInfo.AgentId, snap.ModelName, err))
-			relayInfo.PlatformQuota = snap.EstimatedQuotaAfterGroup
-			return
+			common.SysError(fmt.Sprintf("%s model=%s: %s", errorPrefix, snapshot.ModelName, err))
+			return snapshot.EstimatedQuotaAfterGroup
 		}
 		noteQuotaClamp(relayInfo, result.Clamp)
-		relayInfo.PlatformQuota = result.ActualQuotaAfterGroup
-		return
+		return result.ActualQuotaAfterGroup
 	}
-	if relayInfo.AgentCostPriceData == nil {
-		return
-	}
-	if usage == nil {
-		return
+	if priceData == nil || usage == nil {
+		return 0
 	}
 	costRelayInfo := *relayInfo
-	costRelayInfo.PriceData = *relayInfo.AgentCostPriceData
+	costRelayInfo.PriceData = *priceData
 	costRelayInfo.AgentCostPriceData = nil
 	costRelayInfo.AgentCostTieredBillingSnapshot = nil
+	costRelayInfo.ChannelCostPriceData = nil
+	costRelayInfo.ChannelCostTieredBillingSnapshot = nil
 	costRelayInfo.QuotaClamp = nil
 	costSummary := calculateTextQuotaSummary(ctx, &costRelayInfo, usage)
-	relayInfo.PlatformQuota = costSummary.Quota
 	noteQuotaClamp(relayInfo, costRelayInfo.QuotaClamp)
+	return costSummary.Quota
 }

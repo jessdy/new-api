@@ -1505,6 +1505,37 @@ func TestSetAgentTextPlatformQuotaUsesIndependentCostPricing(t *testing.T) {
 	})
 }
 
+func TestSetChannelTextQuotaUsesIndependentCostPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 10,
+		TotalTokens:      110,
+	}
+
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 7},
+		OriginModelName: "channel-cost-model",
+		PriceData: hosttypes.PriceData{
+			ModelRatio:      9,
+			CompletionRatio: 9,
+		},
+		ChannelCostPriceData: &hosttypes.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 2,
+			GroupRatioInfo: hosttypes.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+	}
+
+	SetChannelTextQuota(ctx, relayInfo, usage, false)
+
+	assert.Equal(t, 120, relayInfo.ChannelQuota)
+	assert.Zero(t, relayInfo.PlatformQuota)
+}
+
 func TestPrivilegedRolesSkipWalletQuota(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)

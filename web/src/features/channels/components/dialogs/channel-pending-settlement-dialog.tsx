@@ -107,6 +107,11 @@ export function ChannelPendingSettlementDialog(props: {
         header: t('Pending settlement amount'),
         cell: (row) => formatQuota(row.platform_quota),
       },
+      {
+        id: 'channel-cost',
+        header: t('Channel cost'),
+        cell: (row) => formatQuota(row.channel_quota ?? 0),
+      },
     ],
     [expandedChannelId, t]
   )
@@ -162,13 +167,21 @@ export function ChannelPendingSettlementDialog(props: {
         ) : null}
         {usage ? (
           <div className='space-y-4'>
-            <div className='grid gap-3 sm:grid-cols-3'>
+            <div className='grid gap-3 sm:grid-cols-4'>
               <div className='rounded-md border p-3'>
                 <div className='text-muted-foreground text-xs'>
                   {t('Pending settlement amount')}
                 </div>
                 <div className='text-lg font-medium'>
                   {formatQuota(usage.platform_quota)}
+                </div>
+              </div>
+              <div className='rounded-md border p-3'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Channel cost')}
+                </div>
+                <div className='text-lg font-medium'>
+                  {formatQuota(usage.channel_quota ?? 0)}
                 </div>
               </div>
               <div className='rounded-md border p-3'>
@@ -196,6 +209,7 @@ export function ChannelPendingSettlementDialog(props: {
                 <SettlementModelStatsTable
                   models={usage.models ?? []}
                   amountMode='pending'
+                  showChannelCost
                 />
               </div>
             </div>
@@ -240,6 +254,7 @@ export function ChannelPendingSettlementDialog(props: {
                             <SettlementModelStatsTable
                               models={row.models ?? []}
                               amountMode='pending'
+                              showChannelCost
                             />
                           </TableCell>
                         </TableRow>

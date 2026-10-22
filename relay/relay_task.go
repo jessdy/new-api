@@ -275,6 +275,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if err := helper.PrepareAgentTaskCostPricing(info, facts); err != nil {
 			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 		}
+		if err := helper.PrepareChannelTaskCostPricing(info, facts); err != nil {
+			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		}
 	}
 	if useTiered {
 		if billingexpr.UsesFixedPricing(exprStr) {
@@ -331,6 +334,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		noteTaskQuotaClamp(info, clamp)
 	}
 	helper.SetAgentTaskPlatformQuota(info)
+	helper.SetChannelTaskQuota(info)
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {

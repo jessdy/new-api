@@ -111,11 +111,19 @@ type RelayInfo struct {
 	// PlatformQuota is the platform settlement basis for agent users (group_ratio=1,
 	// before agent discount). Zero for platform-direct users.
 	PlatformQuota int
+	// ChannelQuota is the admin-only upstream cost of the selected channel.
+	// It never affects the end-user charge or agent settlement debt.
+	ChannelQuota int
 	// AgentCostPriceData and AgentCostTieredBillingSnapshot hold the independent
 	// platform→agent cost contract. They never affect the end-user charge.
 	AgentCostPriceData             *hosttypes.PriceData
 	AgentCostTieredBillingSnapshot *billingexpr.BillingSnapshot
 	AgentCostBillingRequestInput   *billingexpr.RequestInput
+	// ChannelCostPriceData and ChannelCostTieredBillingSnapshot hold the
+	// independent channel upstream-cost contract.
+	ChannelCostPriceData             *hosttypes.PriceData
+	ChannelCostTieredBillingSnapshot *billingexpr.BillingSnapshot
+	ChannelCostBillingRequestInput   *billingexpr.RequestInput
 	// AgentDiscountRatio is the agent model discount applied to the user charge.
 	AgentDiscountRatio float64
 	// RetailPricing freezes the role-specific model pricing selected for this
