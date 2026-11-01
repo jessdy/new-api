@@ -23,13 +23,16 @@ import type {
   Table as TanStackTable,
 } from '@tanstack/react-table'
 import {
+  Activity,
   Check,
   CheckCircle2,
+  ChevronDown,
   Copy,
   Gauge,
   Info,
   Loader2,
   Settings,
+  Square,
   Trash2,
 } from 'lucide-react'
 import {
@@ -64,6 +67,11 @@ import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -84,8 +92,20 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { updateChannel } from '../../api'
 import {
   channelsQueryKeys,
+  FULL_TEST_DEFAULT_CONCURRENCY,
+  FULL_TEST_DEFAULT_ROUNDS,
+  FULL_TEST_MAX_CONCURRENCY,
+  FULL_TEST_MAX_ROUNDS,
+  FULL_TEST_MIN_CONCURRENCY,
+  FULL_TEST_MIN_ROUNDS,
   formatResponseTime,
   handleTestChannel,
+  normalizeFullTestConcurrency,
+  normalizeFullTestRounds,
+  runWithConcurrency,
+  summarizeFullTestSamples,
+  type FullTestSample,
+  type FullTestSummary,
 } from '../../lib'
 import type {
   Channel,
@@ -122,6 +142,25 @@ type BatchProgress = {
   completed: number
   success: number
   failed: number
+}
+
+type FullTestProgress = {
+  completed: number
+  total: number
+}
+
+type FullTestRowState = {
+  status: 'idle' | 'running' | 'completed' | 'stopped'
+  progress?: FullTestProgress
+  summary?: FullTestSummary
+  rounds?: number
+  concurrency?: number
+}
+
+type FullTestConfigState = {
+  model: string
+  rounds: number
+  concurrency: number
 }
 
 type ChannelTestCachePatch = {
@@ -282,7 +321,7 @@ function getTestTableColumnClass(columnId: string) {
     case 'status':
       return 'w-28 min-w-28 whitespace-nowrap'
     case 'result':
-      return 'w-80 min-w-80 max-w-80 whitespace-normal'
+      return 'w-96 min-w-96 max-w-96 whitespace-normal'
     case 'actions':
       return 'bg-popover w-px whitespace-nowrap'
     default:
@@ -319,6 +358,7 @@ function ChannelTestDialogContent({
   const queryClient = useQueryClient()
   const currentChannelId = currentRow.id
   const batchStopRequestedRef = useRef(false)
+  const fullTestStopRequestedRef = useRef(false)
   const batchProgressToastIdRef = useRef<ReturnType<
     typeof toast.loading
   > | null>(null)
@@ -326,6 +366,13 @@ function ChannelTestDialogContent({
   const [isStreamTest, setIsStreamTest] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+  const [fullTestResults, setFullTestResults] = useState<
+    Record<string, FullTestRowState>
+  >({})
+  const [fullTestConfig, setFullTestConfig] =
+    useState<FullTestConfigState | null>(null)
+  const [fullTestingModel, setFullTestingModel] = useState<string | null>(null)
+  const [isFullTestStopRequested, setIsFullTestStopRequested] = useState(false)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [testingModels, setTestingModels] = useState<Set<string>>(
     () => new Set()
@@ -389,10 +436,15 @@ function ChannelTestDialogContent({
 
   const resetState = useCallback(() => {
     batchStopRequestedRef.current = true
+    fullTestStopRequestedRef.current = true
     setEndpointType('auto')
     setIsStreamTest(false)
     setSearchTerm('')
     setTestResults({})
+    setFullTestResults({})
+    setFullTestConfig(null)
+    setFullTestingModel(null)
+    setIsFullTestStopRequested(false)
     setRowSelection({})
     setTestingModels(() => new Set())
     setIsBatchTesting(false)
@@ -604,12 +656,189 @@ function ChannelTestDialogContent({
     setIsBatchStopRequested(true)
   }, [isBatchStopRequested, isBatchTesting])
 
+  const openFullTestConfig = useCallback((model: string) => {
+    setFullTestConfig({
+      model,
+      rounds: FULL_TEST_DEFAULT_ROUNDS,
+      concurrency: FULL_TEST_DEFAULT_CONCURRENCY,
+    })
+  }, [])
+
+  const handleStopFullTest = useCallback(() => {
+    if (!fullTestingModel || isFullTestStopRequested) return
+
+    fullTestStopRequestedRef.current = true
+    setIsFullTestStopRequested(true)
+  }, [fullTestingModel, isFullTestStopRequested])
+
+  const probeModelOnce = useCallback(
+    (model: string): Promise<FullTestSample> =>
+      new Promise((resolve) => {
+        void handleTestChannel(
+          currentRow.id,
+          {
+            channelName: currentRow.name,
+            testModel: model,
+            endpointType: endpointType === 'auto' ? undefined : endpointType,
+            stream: effectiveStreamTest || undefined,
+            silent: true,
+          },
+          (success, responseTime, error, errorCode) => {
+            resolve({
+              ok: success,
+              latencyMs: responseTime,
+              error,
+              errorCode,
+            })
+          }
+        ).catch((error: unknown) => {
+          resolve({
+            ok: false,
+            error: error instanceof Error ? error.message : t('Test failed'),
+          })
+        })
+      }),
+    [currentRow.id, currentRow.name, effectiveStreamTest, endpointType, t]
+  )
+
+  const runFullTest = useCallback(
+    async (model: string, roundsInput: number, concurrencyInput: number) => {
+      if (isBatchTesting || fullTestingModel || testingModels.size > 0) return
+
+      const rounds = normalizeFullTestRounds(roundsInput)
+      const concurrency = normalizeFullTestConcurrency(concurrencyInput)
+
+      fullTestStopRequestedRef.current = false
+      setIsFullTestStopRequested(false)
+      setFullTestConfig(null)
+      setFullTestingModel(model)
+      setFullTestResults((prev) => ({
+        ...prev,
+        [model]: {
+          status: 'running',
+          progress: { completed: 0, total: rounds },
+          rounds,
+          concurrency,
+        },
+      }))
+
+      toast.info(t('Full test for {{model}}', { model }), {
+        description: t(
+          'This will send real upstream requests and may incur usage charges.'
+        ),
+      })
+
+      const samples: FullTestSample[] = []
+      const tasks = Array.from({ length: rounds }, () => async () => {
+        const sample = await probeModelOnce(model)
+        samples.push(sample)
+        return sample
+      })
+
+      try {
+        await runWithConcurrency(tasks, concurrency, {
+          shouldStop: () => fullTestStopRequestedRef.current,
+          onProgress: (completed, total) => {
+            setFullTestResults((prev) => ({
+              ...prev,
+              [model]: {
+                ...prev[model],
+                status: 'running',
+                progress: { completed, total },
+                rounds,
+                concurrency,
+              },
+            }))
+          },
+        })
+
+        const summary = summarizeFullTestSamples(samples)
+        const stopped =
+          fullTestStopRequestedRef.current && samples.length < rounds
+
+        setFullTestResults((prev) => ({
+          ...prev,
+          [model]: {
+            status: stopped ? 'stopped' : 'completed',
+            progress: { completed: samples.length, total: rounds },
+            summary,
+            rounds,
+            concurrency,
+          },
+        }))
+
+        if (summary.success > 0 && typeof summary.avg === 'number') {
+          const completedAt = Date.now()
+          updateTestResult(model, {
+            status: 'success',
+            responseTime: Math.round(summary.avg),
+            completedAt,
+          })
+          refreshChannelLists(
+            createChannelTestCachePatch(Math.round(summary.avg), completedAt)
+          )
+        } else if (summary.failed > 0) {
+          updateTestResult(model, {
+            status: 'error',
+            completedAt: Date.now(),
+            error: summary.lastError || t('Test failed'),
+            errorCode: summary.lastErrorCode,
+          })
+          refreshChannelLists()
+        }
+
+        if (stopped) {
+          toast.info(
+            t(
+              'Full test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed',
+              {
+                completed: samples.length,
+                total: rounds,
+                success: summary.success,
+                failed: summary.failed,
+              }
+            )
+          )
+        } else if (summary.failed > 0) {
+          toast.error(
+            t(
+              'Full test completed: {{success}} succeeded, {{failed}} failed',
+              {
+                success: summary.success,
+                failed: summary.failed,
+              }
+            )
+          )
+        } else {
+          toast.success(
+            t('Full test completed: {{count}} succeeded', {
+              count: summary.success,
+            })
+          )
+        }
+      } finally {
+        fullTestStopRequestedRef.current = false
+        setIsFullTestStopRequested(false)
+        setFullTestingModel(null)
+      }
+    },
+    [
+      fullTestingModel,
+      isBatchTesting,
+      probeModelOnce,
+      refreshChannelLists,
+      t,
+      testingModels.size,
+      updateTestResult,
+    ]
+  )
+
   const handleBatchTest = useCallback(
     async (modelsToTest: string[]) => {
       const uniqueModels = [
         ...new Set(modelsToTest.map((model) => model.trim()).filter(Boolean)),
       ]
-      if (!uniqueModels.length) return
+      if (!uniqueModels.length || fullTestingModel) return
 
       batchStopRequestedRef.current = false
       setIsBatchTesting(true)
@@ -737,6 +966,7 @@ function ChannelTestDialogContent({
     },
     [
       dismissBatchProgressToast,
+      fullTestingModel,
       refreshChannelLists,
       t,
       testSingleModel,
@@ -816,7 +1046,8 @@ function ChannelTestDialogContent({
     [handleClose]
   )
 
-  const isAnyTesting = testingModels.size > 0 || isBatchTesting
+  const isFullTesting = fullTestingModel !== null
+  const isAnyTesting = testingModels.size > 0 || isBatchTesting || isFullTesting
   const isFilteringModels = searchTerm.trim().length > 0
   const testAllButtonLabel = isFilteringModels
     ? t('Test {{count}} matching models', { count: filteredModels.length })
@@ -878,6 +1109,17 @@ function ChannelTestDialogContent({
         header: t('Status'),
         cell: ({ row }) => {
           const model = row.original.model
+          const fullTest = fullTestResults[model]
+          if (fullTest?.status === 'running') {
+            return (
+              <StatusBadge variant='info' copyable={false}>
+                <Loader2 className='size-3.5 shrink-0 animate-spin' />
+                <span className='min-w-0 truncate leading-normal'>
+                  {t('Full testing...')}
+                </span>
+              </StatusBadge>
+            )
+          }
           const result = testResults[model]
           return <TestStatusCell result={result} />
         },
@@ -890,16 +1132,30 @@ function ChannelTestDialogContent({
         cell: ({ row }) => {
           const model = row.original.model
           const result = testResults[model]
+          const fullTest = fullTestResults[model]
           return (
-            <TestResultCell
-              result={result}
-              model={model}
-              onOpenDetails={setFailureDetails}
-            />
+            <div className='space-y-2'>
+              <TestResultCell
+                result={result}
+                model={model}
+                onOpenDetails={setFailureDetails}
+              />
+              {fullTest && fullTest.status !== 'idle' ? (
+                <FullTestResultCell
+                  state={fullTest}
+                  stopRequested={
+                    fullTestingModel === model && isFullTestStopRequested
+                  }
+                  onStop={
+                    fullTestingModel === model ? handleStopFullTest : undefined
+                  }
+                />
+              ) : null}
+            </div>
           )
         },
         enableSorting: false,
-        size: 320,
+        size: 384,
       },
       {
         id: 'actions',
@@ -907,28 +1163,73 @@ function ChannelTestDialogContent({
         cell: ({ row }) => {
           const model = row.original.model
           const isTestingModel = testingModels.has(model)
+          const isModelFullTesting = fullTestingModel === model
+          const rowBusy =
+            isTestingModel || isBatchTesting || isFullTesting
+
+          let fullTestIcon = <Activity className='size-4' />
+          if (isModelFullTesting && isFullTestStopRequested) {
+            fullTestIcon = <Loader2 className='size-4 animate-spin' />
+          } else if (isModelFullTesting) {
+            fullTestIcon = <Square className='size-4' />
+          }
+
+          let fullTestTooltip = t('Full test')
+          if (isModelFullTesting && isFullTestStopRequested) {
+            fullTestTooltip = t('Stopping...')
+          } else if (isModelFullTesting) {
+            fullTestTooltip = t('Stop testing')
+          }
 
           return (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    onClick={() => testSingleModel(model)}
-                    disabled={isTestingModel || isBatchTesting}
-                    aria-label={t('Test Connection')}
-                  />
-                }
-              >
-                {isTestingModel ? (
-                  <Loader2 className='size-4 animate-spin' />
-                ) : (
-                  <Gauge className='size-4' />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>{t('Test Connection')}</TooltipContent>
-            </Tooltip>
+            <div className='flex items-center gap-0.5'>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      onClick={() => testSingleModel(model)}
+                      disabled={rowBusy}
+                      aria-label={t('Test Connection')}
+                    />
+                  }
+                >
+                  {isTestingModel ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <Gauge className='size-4' />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>{t('Test Connection')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      onClick={() => {
+                        if (isModelFullTesting) {
+                          handleStopFullTest()
+                          return
+                        }
+                        openFullTestConfig(model)
+                      }}
+                      disabled={
+                        isModelFullTesting
+                          ? isFullTestStopRequested
+                          : rowBusy
+                      }
+                      aria-label={fullTestTooltip}
+                    />
+                  }
+                >
+                  {fullTestIcon}
+                </TooltipTrigger>
+                <TooltipContent>{fullTestTooltip}</TooltipContent>
+              </Tooltip>
+            </div>
           )
         },
         enableSorting: false,
@@ -936,7 +1237,13 @@ function ChannelTestDialogContent({
     ],
     [
       defaultTestModel,
+      fullTestResults,
+      fullTestingModel,
+      handleStopFullTest,
       isBatchTesting,
+      isFullTestStopRequested,
+      isFullTesting,
+      openFullTestConfig,
       t,
       testResults,
       testingModels,
@@ -1103,7 +1410,7 @@ function ChannelTestDialogContent({
                     <col className='w-10 min-w-10' />
                     <col className='w-auto' />
                     <col className='w-28' />
-                    <col className='w-80' />
+                    <col className='w-96' />
                     <col className='w-px' />
                   </colgroup>
                 }
@@ -1146,7 +1453,227 @@ function ChannelTestDialogContent({
           }
         }}
       />
+      <FullTestConfigSheet
+        config={fullTestConfig}
+        busy={isAnyTesting}
+        onOpenChange={(sheetOpen) => {
+          if (!sheetOpen) {
+            setFullTestConfig(null)
+          }
+        }}
+        onStart={(rounds, concurrency) => {
+          if (!fullTestConfig) return
+          void runFullTest(fullTestConfig.model, rounds, concurrency)
+        }}
+      />
     </>
+  )
+}
+
+function formatSuccessRate(rate: number) {
+  return `${(rate * 100).toFixed(rate === 0 || rate === 1 ? 0 : 1)}%`
+}
+
+function formatLatencyMs(value: number | null | undefined, t: (key: string, options?: Record<string, unknown>) => string) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '-'
+  }
+  return formatResponseTime(Math.round(value), t)
+}
+
+function FullTestResultCell({
+  state,
+  stopRequested,
+  onStop,
+}: {
+  state: FullTestRowState
+  stopRequested?: boolean
+  onStop?: () => void
+}) {
+  const { t } = useTranslation()
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  if (state.status === 'running') {
+    const completed = state.progress?.completed ?? 0
+    const total = state.progress?.total ?? state.rounds ?? 0
+    return (
+      <div className='flex min-w-0 flex-wrap items-center gap-2 text-xs'>
+        <Loader2 className='text-muted-foreground size-3.5 shrink-0 animate-spin' />
+        <span className='text-muted-foreground'>
+          {t('{{completed}}/{{total}} completed', { completed, total })}
+        </span>
+        {onStop ? (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7 px-2 text-xs'
+            onClick={onStop}
+            disabled={stopRequested}
+          >
+            {stopRequested ? t('Stopping...') : t('Stop testing')}
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (!state.summary) {
+    return null
+  }
+
+  const summary = state.summary
+
+  return (
+    <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <div className='space-y-1 text-xs'>
+        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+          <span className='text-foreground font-medium'>
+            {t('Success rate')}: {formatSuccessRate(summary.successRate)}
+          </span>
+          <span className='text-muted-foreground'>
+            {t('Avg latency')}: {formatLatencyMs(summary.avg, t)}
+          </span>
+          <CollapsibleTrigger className='hover:bg-muted/50 inline-flex h-7 items-center rounded-md px-2 text-xs'>
+            <ChevronDown
+              className={`mr-1 size-3 transition-transform ${detailsOpen ? 'rotate-180' : ''}`}
+            />
+            {t('Details')}
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent>
+          <div className='text-muted-foreground grid gap-1 pt-1'>
+            <div>
+              {t('{{success}} succeeded, {{failed}} failed', {
+                success: summary.success,
+                failed: summary.failed,
+              })}
+            </div>
+            <div>
+              {t('Min')}: {formatLatencyMs(summary.min, t)} · {t('Max')}:{' '}
+              {formatLatencyMs(summary.max, t)}
+            </div>
+            <div>
+              {t('P50')}: {formatLatencyMs(summary.p50, t)} · {t('P95')}:{' '}
+              {formatLatencyMs(summary.p95, t)}
+            </div>
+            {summary.lastError ? (
+              <div className='wrap-break-word'>
+                {t('Last error')}: {summary.lastError}
+              </div>
+            ) : null}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  )
+}
+
+function FullTestConfigSheet({
+  config,
+  busy,
+  onOpenChange,
+  onStart,
+}: {
+  config: FullTestConfigState | null
+  busy: boolean
+  onOpenChange: (open: boolean) => void
+  onStart: (rounds: number, concurrency: number) => void
+}) {
+  const { t } = useTranslation()
+  const isMobile = useIsMobile()
+  const [rounds, setRounds] = useState(String(FULL_TEST_DEFAULT_ROUNDS))
+  const [concurrency, setConcurrency] = useState(
+    String(FULL_TEST_DEFAULT_CONCURRENCY)
+  )
+
+  useEffect(() => {
+    if (!config) return
+    setRounds(String(config.rounds))
+    setConcurrency(String(config.concurrency))
+  }, [config])
+
+  const parsedRounds = normalizeFullTestRounds(Number(rounds))
+  const parsedConcurrency = normalizeFullTestConcurrency(Number(concurrency))
+
+  return (
+    <Sheet open={Boolean(config)} onOpenChange={onOpenChange}>
+      <SheetContent
+        side={isMobile ? 'bottom' : 'right'}
+        className={
+          isMobile
+            ? sideDrawerContentClassName('h-auto max-h-[85dvh] rounded-t-xl')
+            : sideDrawerContentClassName('sm:max-w-md')
+        }
+      >
+        {config ? (
+          <>
+            <SheetHeader className={sideDrawerHeaderClassName('sm:px-5')}>
+              <SheetTitle className='pr-10'>{t('Full test')}</SheetTitle>
+              <SheetDescription className='pr-10 wrap-break-word'>
+                {t('Full test for {{model}}', { model: config.model })}
+              </SheetDescription>
+            </SheetHeader>
+            <div className={sideDrawerFormClassName('gap-4 sm:px-5')}>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'This will send real upstream requests and may incur usage charges.'
+                )}
+              </p>
+              <div className='grid gap-2'>
+                <Label htmlFor='full-test-rounds'>{t('Requests')}</Label>
+                <Input
+                  id='full-test-rounds'
+                  type='number'
+                  min={FULL_TEST_MIN_ROUNDS}
+                  max={FULL_TEST_MAX_ROUNDS}
+                  value={rounds}
+                  onChange={(event) => setRounds(event.target.value)}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Range: {{min}}–{{max}}', {
+                    min: FULL_TEST_MIN_ROUNDS,
+                    max: FULL_TEST_MAX_ROUNDS,
+                  })}
+                </p>
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='full-test-concurrency'>{t('Concurrency')}</Label>
+                <Input
+                  id='full-test-concurrency'
+                  type='number'
+                  min={FULL_TEST_MIN_CONCURRENCY}
+                  max={FULL_TEST_MAX_CONCURRENCY}
+                  value={concurrency}
+                  onChange={(event) => setConcurrency(event.target.value)}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Range: {{min}}–{{max}}', {
+                    min: FULL_TEST_MIN_CONCURRENCY,
+                    max: FULL_TEST_MAX_CONCURRENCY,
+                  })}
+                </p>
+              </div>
+            </div>
+            <SheetFooter className={sideDrawerFooterClassName('sm:px-5')}>
+              <Button
+                variant='outline'
+                className='w-full sm:w-auto'
+                onClick={() => onOpenChange(false)}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button
+                className='w-full sm:w-auto'
+                disabled={busy}
+                onClick={() => onStart(parsedRounds, parsedConcurrency)}
+              >
+                {t('Start full test')}
+              </Button>
+            </SheetFooter>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   )
 }
 
