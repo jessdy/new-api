@@ -49,11 +49,23 @@ export type FullTestSummary = FullTestLatencySummary & {
   lastErrorCode?: string
 }
 
+/** PriceAI-style availability bar tones. */
+export type FullTestBarTone = 'good' | 'warn' | 'bad' | 'empty'
+
+export type FullTestBar = {
+  id: string
+  tone: FullTestBarTone
+}
+
 export type RunWithConcurrencyOptions = {
   signal?: AbortSignal
   onProgress?: (completed: number, total: number) => void
   shouldStop?: () => boolean
 }
+
+/** Match PriceAI transit stability strip: up to 20 bars, 3 samples per bar. */
+export const FULL_TEST_BAR_COUNT = 20
+export const FULL_TEST_BAR_GROUP_SIZE = 3
 
 function clampInt(value: number, min: number, max: number, fallback: number) {
   if (!Number.isFinite(value)) return fallback
@@ -135,6 +147,53 @@ export function summarizeFullTestSamples(
     lastError: lastFailure?.error,
     lastErrorCode: lastFailure?.errorCode,
   }
+}
+
+function toneForSampleGroup(group: Array<Pick<FullTestSample, 'ok'>>): FullTestBarTone {
+  if (group.length === 0) return 'empty'
+  const okCount = group.filter((sample) => sample.ok).length
+  if (okCount === group.length) return 'good'
+  if (okCount === 0) return 'bad'
+  return 'warn'
+}
+
+/**
+ * Build PriceAI-style green / yellow / red availability bars.
+ * Each bar covers up to {@link FULL_TEST_BAR_GROUP_SIZE} samples; unused slots stay empty.
+ */
+export function buildFullTestBars(
+  samples: Array<Pick<FullTestSample, 'ok'>>,
+  plannedTotal = samples.length
+): FullTestBar[] {
+  const bars: FullTestBar[] = Array.from(
+    { length: FULL_TEST_BAR_COUNT },
+    (_, slot) => ({ id: `full-test-bar-${slot}`, tone: 'empty' })
+  )
+  const capacity = Math.max(samples.length, plannedTotal)
+  if (capacity <= 0) return bars
+
+  const groupCount = Math.min(
+    FULL_TEST_BAR_COUNT,
+    Math.ceil(capacity / FULL_TEST_BAR_GROUP_SIZE)
+  )
+
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+    const start = groupIndex * FULL_TEST_BAR_GROUP_SIZE
+    const group = samples.slice(start, start + FULL_TEST_BAR_GROUP_SIZE)
+    const bar = bars[groupIndex]
+    if (bar) {
+      bar.tone = toneForSampleGroup(group)
+    }
+  }
+
+  return bars
+}
+
+export function fullTestBarClassName(tone: FullTestBarTone): string {
+  if (tone === 'good') return 'bg-[#45bf78]'
+  if (tone === 'warn') return 'bg-[#d99a2b]'
+  if (tone === 'bad') return 'bg-[#d95745]'
+  return 'bg-[#e5eaea] dark:bg-[#3a4242]'
 }
 
 export async function runWithConcurrency<T>(

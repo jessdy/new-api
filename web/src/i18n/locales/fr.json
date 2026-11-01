@@ -4644,6 +4644,7 @@
     "Request retry": "Relance des requêtes",
     "Request rule pricing": "Règles de tarification de requête",
     "Request rules apply on top of this amount.": "Les règles de requête s’appliquent en plus de ce montant.",
+    "Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.": "Échantillons de requêtes du plus ancien au plus récent : vert réussi, jaune mixte, rouge échoué, gris en attente.",
     "Request simulation": "Simulation de requête",
     "Request success rate sampled over the last 24 hours": "Taux de réussite des requêtes échantillonné sur les dernières 24 heures",
     "Request success rate; {{incidents}} incident buckets in the last 24 hours": "Taux de réussite des requêtes ; {{incidents}} créneaux avec incident sur les dernières 24 heures",

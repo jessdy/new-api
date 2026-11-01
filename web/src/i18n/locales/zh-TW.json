@@ -4644,6 +4644,7 @@
     "Request retry": "請求重試",
     "Request rule pricing": "請求規則收費",
     "Request rules apply on top of this amount.": "請求規則會在此金額之上繼續套用。",
+    "Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.": "請求樣本按從舊到新排列：綠色成功，黃色部分失敗，紅色失敗，淺灰待測。",
     "Request simulation": "請求模擬",
     "Request success rate sampled over the last 24 hours": "最近 24 小時按時間桶採樣的請求成功率",
     "Request success rate; {{incidents}} incident buckets in the last 24 hours": "請求成功率；最近 24 小時 {{incidents}} 個異常桶",

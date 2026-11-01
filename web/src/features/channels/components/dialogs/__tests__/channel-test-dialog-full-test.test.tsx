@@ -133,6 +133,12 @@ describe('ChannelTestDialog full test', () => {
     await waitFor(() => {
       expect(screen.getByText(/Success rate:\s*100%/)).toBeTruthy()
       expect(screen.getByText(/Avg latency:\s*150ms/)).toBeTruthy()
+      expect(screen.getByTestId('full-test-availability-strip')).toBeTruthy()
+      expect(
+        screen
+          .getByTestId('full-test-availability-strip')
+          .querySelectorAll('[data-tone="good"]').length
+      ).toBeGreaterThan(0)
     })
   })
 })

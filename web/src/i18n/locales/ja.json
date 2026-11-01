@@ -4644,6 +4644,7 @@
     "Request retry": "リクエスト再試行",
     "Request rule pricing": "リクエストルールの課金",
     "Request rules apply on top of this amount.": "リクエストルールはこの金額に追加で適用されます。",
+    "Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.": "リクエストサンプル（古い→新しい）：緑は成功、黄は一部失敗、赤は失敗、灰は未実施。",
     "Request simulation": "リクエストのシミュレーション",
     "Request success rate sampled over the last 24 hours": "過去 24 時間にサンプリングされたリクエスト成功率",
     "Request success rate; {{incidents}} incident buckets in the last 24 hours": "リクエスト成功率；過去 24 時間に {{incidents}} 個のインシデント時間枠",

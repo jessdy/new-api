@@ -98,7 +98,9 @@ import {
   FULL_TEST_MAX_ROUNDS,
   FULL_TEST_MIN_CONCURRENCY,
   FULL_TEST_MIN_ROUNDS,
+  buildFullTestBars,
   formatResponseTime,
+  fullTestBarClassName,
   handleTestChannel,
   normalizeFullTestConcurrency,
   normalizeFullTestRounds,
@@ -152,6 +154,7 @@ type FullTestProgress = {
 type FullTestRowState = {
   status: 'idle' | 'running' | 'completed' | 'stopped'
   progress?: FullTestProgress
+  samples?: FullTestSample[]
   summary?: FullTestSummary
   rounds?: number
   concurrency?: number
@@ -717,6 +720,7 @@ function ChannelTestDialogContent({
         [model]: {
           status: 'running',
           progress: { completed: 0, total: rounds },
+          samples: [],
           rounds,
           concurrency,
         },
@@ -728,23 +732,32 @@ function ChannelTestDialogContent({
         ),
       })
 
-      const samples: FullTestSample[] = []
-      const tasks = Array.from({ length: rounds }, () => async () => {
+      const orderedSamples: Array<FullTestSample | undefined> = Array.from({
+        length: rounds,
+      })
+      const collectSamples = () =>
+        orderedSamples.filter((sample): sample is FullTestSample =>
+          Boolean(sample)
+        )
+
+      const tasks = Array.from({ length: rounds }, (_, index) => async () => {
         const sample = await probeModelOnce(model)
-        samples.push(sample)
+        orderedSamples[index] = sample
         return sample
       })
 
       try {
-        await runWithConcurrency(tasks, concurrency, {
+        const settled = await runWithConcurrency(tasks, concurrency, {
           shouldStop: () => fullTestStopRequestedRef.current,
           onProgress: (completed, total) => {
+            const samples = collectSamples()
             setFullTestResults((prev) => ({
               ...prev,
               [model]: {
                 ...prev[model],
                 status: 'running',
                 progress: { completed, total },
+                samples,
                 rounds,
                 concurrency,
               },
@@ -752,6 +765,9 @@ function ChannelTestDialogContent({
           },
         })
 
+        const samples = settled.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : []
+        )
         const summary = summarizeFullTestSamples(samples)
         const stopped =
           fullTestStopRequestedRef.current && samples.length < rounds
@@ -761,6 +777,7 @@ function ChannelTestDialogContent({
           [model]: {
             status: stopped ? 'stopped' : 'completed',
             progress: { completed: samples.length, total: rounds },
+            samples,
             summary,
             rounds,
             concurrency,
@@ -1481,6 +1498,39 @@ function formatLatencyMs(value: number | null | undefined, t: (key: string, opti
   return formatResponseTime(Math.round(value), t)
 }
 
+function FullTestAvailabilityStrip({
+  samples,
+  plannedTotal,
+}: {
+  samples: FullTestSample[]
+  plannedTotal: number
+}) {
+  const { t } = useTranslation()
+  const bars = buildFullTestBars(samples, plannedTotal)
+
+  return (
+    <div
+      className='flex h-4 items-stretch gap-0.5'
+      role='img'
+      data-testid='full-test-availability-strip'
+      aria-label={t(
+        'Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.'
+      )}
+      title={t(
+        'Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.'
+      )}
+    >
+      {bars.map((bar) => (
+        <span
+          key={bar.id}
+          data-tone={bar.tone}
+          className={`w-[3px] flex-none rounded-[1px] ${fullTestBarClassName(bar.tone)}`}
+        />
+      ))}
+    </div>
+  )
+}
+
 function FullTestResultCell({
   state,
   stopRequested,
@@ -1492,27 +1542,32 @@ function FullTestResultCell({
 }) {
   const { t } = useTranslation()
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const samples = state.samples ?? []
+  const plannedTotal = state.progress?.total ?? state.rounds ?? samples.length
 
   if (state.status === 'running') {
     const completed = state.progress?.completed ?? 0
-    const total = state.progress?.total ?? state.rounds ?? 0
+    const total = plannedTotal
     return (
-      <div className='flex min-w-0 flex-wrap items-center gap-2 text-xs'>
-        <Loader2 className='text-muted-foreground size-3.5 shrink-0 animate-spin' />
-        <span className='text-muted-foreground'>
-          {t('{{completed}}/{{total}} completed', { completed, total })}
-        </span>
-        {onStop ? (
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-7 px-2 text-xs'
-            onClick={onStop}
-            disabled={stopRequested}
-          >
-            {stopRequested ? t('Stopping...') : t('Stop testing')}
-          </Button>
-        ) : null}
+      <div className='space-y-1.5 text-xs'>
+        <FullTestAvailabilityStrip samples={samples} plannedTotal={total} />
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
+          <Loader2 className='text-muted-foreground size-3.5 shrink-0 animate-spin' />
+          <span className='text-muted-foreground'>
+            {t('{{completed}}/{{total}} completed', { completed, total })}
+          </span>
+          {onStop ? (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={onStop}
+              disabled={stopRequested}
+            >
+              {stopRequested ? t('Stopping...') : t('Stop testing')}
+            </Button>
+          ) : null}
+        </div>
       </div>
     )
   }
@@ -1525,7 +1580,11 @@ function FullTestResultCell({
 
   return (
     <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-      <div className='space-y-1 text-xs'>
+      <div className='space-y-1.5 text-xs'>
+        <FullTestAvailabilityStrip
+          samples={samples}
+          plannedTotal={Math.max(plannedTotal, samples.length)}
+        />
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           <span className='text-foreground font-medium'>
             {t('Success rate')}: {formatSuccessRate(summary.successRate)}

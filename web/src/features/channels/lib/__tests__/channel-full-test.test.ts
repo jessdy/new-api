@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  buildFullTestBars,
   normalizeFullTestConcurrency,
   normalizeFullTestRounds,
   runWithConcurrency,
@@ -59,6 +60,29 @@ describe('channel full test helpers', () => {
     expect(summary.successRate).toBe(0.5)
     expect(summary.avg).toBe(150)
     expect(summary.lastError).toBe('rate limited')
+  })
+
+  it('builds PriceAI-style green yellow red availability bars', () => {
+    const bars = buildFullTestBars(
+      [
+        { ok: true },
+        { ok: true },
+        { ok: true },
+        { ok: true },
+        { ok: false },
+        { ok: false },
+        { ok: false },
+      ],
+      9
+    )
+
+    expect(bars.slice(0, 4).map((bar) => bar.tone)).toEqual([
+      'good',
+      'warn',
+      'bad',
+      'empty',
+    ])
+    expect(bars.slice(4).every((bar) => bar.tone === 'empty')).toBe(true)
   })
 
   it('runs tasks with a concurrency limit and reports progress', async () => {

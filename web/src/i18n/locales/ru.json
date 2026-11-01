@@ -4644,6 +4644,7 @@
     "Request retry": "Повтор запросов",
     "Request rule pricing": "Правила ценообразования по запросу",
     "Request rules apply on top of this amount.": "Правила запроса применяются дополнительно к этой сумме.",
+    "Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.": "Выборки запросов от старых к новым: зелёный — успех, жёлтый — частично, красный — ошибка, серый — ожидание.",
     "Request simulation": "Моделирование запроса",
     "Request success rate sampled over the last 24 hours": "Доля успешных запросов по выборкам за последние 24 часа",
     "Request success rate; {{incidents}} incident buckets in the last 24 hours": "Доля успешных запросов; {{incidents}} интервалов с инцидентами за последние 24 часа",
