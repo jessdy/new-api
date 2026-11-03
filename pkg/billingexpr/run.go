@@ -32,7 +32,7 @@ func RunExprWithRequest(exprStr string, params TokenParams, request RequestInput
 	if err != nil {
 		return 0, TraceResult{}, err
 	}
-	return runProgram(entry.prog, entry.requestRules, entry.usedVars, params, request)
+	return runProgram(entry.prog, entry.requestRules, entry.usedVars, entry.usedUsageKeys, params, request)
 }
 
 // RunExprByHash is like RunExpr but accepts a pre-computed hash for the cache
@@ -47,19 +47,34 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 	if err != nil {
 		return 0, TraceResult{}, err
 	}
-	return runProgram(entry.prog, entry.requestRules, entry.usedVars, params, request)
+	return runProgram(entry.prog, entry.requestRules, entry.usedVars, entry.usedUsageKeys, params, request)
 }
 
-func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[string]bool, params TokenParams, request RequestInput) (float64, TraceResult, error) {
+func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars, usedUsageKeys map[string]bool, params TokenParams, request RequestInput) (float64, TraceResult, error) {
 	trace := TraceResult{
 		BillingUnit:  BillingUnitToken,
 		RequestRules: append([]RequestRuleTrace(nil), requestRules...),
 	}
 	headers := normalizeHeaders(request.Headers)
 	imageCount := 1
-	if usedVars["image_count"] {
+	// Bare image_count and u("image_count") both bill image quantity. HTTP
+	// image agent/channel cost often uses only the latter; treat either as a
+	// quantity expression so EstimatedImageCount and u() agree.
+	needsImageCount := usedVars["image_count"] || usedUsageKeys["image_count"]
+	if needsImageCount {
 		if request.ImageCount != nil {
 			imageCount = *request.ImageCount
+		} else if request.Usage != nil {
+			if raw, ok := request.Usage["image_count"]; ok {
+				switch v := raw.(type) {
+				case float64:
+					imageCount = int(v)
+				case int:
+					imageCount = v
+				case int64:
+					imageCount = int(v)
+				}
+			}
 		}
 		if imageCount < 1 || imageCount > dto.MaxImageN {
 			return 0, trace, fmt.Errorf("image_count must be between 1 and %d", dto.MaxImageN)
@@ -124,10 +139,23 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 			return result.Value()
 		},
 		"u": func(name string) any {
-			if request.Usage == nil {
+			key := strings.TrimSpace(name)
+			if request.Usage != nil {
+				if value, exists := request.Usage[key]; exists && value != nil {
+					return value
+				}
+			}
+			// HTTP OpenAI image paths set RequestInput.ImageCount / default 1
+			// but leave Usage empty. Agent cost expressions written like task
+			// meters (u("image_count") * price) must still resolve.
+			switch key {
+			case "image_count":
+				return float64(imageCount)
+			case "input_image_count":
+				return float64(0)
+			default:
 				return nil
 			}
-			return request.Usage[strings.TrimSpace(name)]
 		},
 		"has": func(source any, substr string) bool {
 			if source == nil || substr == "" {

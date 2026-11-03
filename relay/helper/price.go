@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -518,6 +519,10 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
+	requestInput, err = attachImageBillingQuantity(c, info, requestInput)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
 
 	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
 		P:   float64(promptTokens),
@@ -640,6 +645,10 @@ func prepareIndependentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, 
 			return result, fmt.Errorf("fixed pricing is not supported for Realtime requests")
 		}
 		requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+		if err != nil {
+			return result, err
+		}
+		requestInput, err = attachImageBillingQuantity(c, info, requestInput)
 		if err != nil {
 			return result, err
 		}
@@ -774,6 +783,19 @@ func PrepareChannelCostPricing(c *gin.Context, info *relaycommon.RelayInfo, mode
 	info.ChannelCostTieredBillingSnapshot = result.Snapshot
 	info.ChannelCostBillingRequestInput = result.RequestInput
 	return nil
+}
+
+// attachImageBillingQuantity freezes the validated ImageRequest quantity onto
+// RequestInput so HTTP image agent/channel/retail expressions that call
+// u("image_count") (task-meter style) resolve the same count as bare image_count.
+func attachImageBillingQuantity(c *gin.Context, info *relaycommon.RelayInfo, input billingexpr.RequestInput) (billingexpr.RequestInput, error) {
+	if info == nil {
+		return input, nil
+	}
+	if _, ok := info.Request.(*dto.ImageRequest); !ok {
+		return input, nil
+	}
+	return ResolveImageBillingRequestInput(c, info, input)
 }
 
 // EnsureTaskImageUsageDefaults fills image count facts that task expressions
