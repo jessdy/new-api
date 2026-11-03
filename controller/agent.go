@@ -359,7 +359,7 @@ func AgentDeleteUser(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "user not found"})
 		return
 	}
-	if err := user.Delete(); err != nil {
+	if _, err := user.Delete(); err != nil {
 		common.ApiError(c, err)
 		return
 	}

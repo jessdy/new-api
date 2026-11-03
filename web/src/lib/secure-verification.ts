@@ -20,6 +20,7 @@ import axios from 'axios'
 
 import {
   getServerErrorMessageKey,
+  getServerMessage,
   safeServerErrorMessage,
 } from './server-error-message'
 
@@ -48,7 +49,10 @@ export class AuthOperationError extends Error {
         message = 'Please try again later.'
       } else if (!message) {
         message =
-          error.response?.data?.message || error.message || fallback
+          getServerMessage(error.response?.data) ||
+          error.response?.data?.message ||
+          error.message ||
+          fallback
       }
       return new AuthOperationError(message, error.response?.data?.code, {
         cause: error,
@@ -77,7 +81,9 @@ export async function authResult<T>(
     const { data: response } = await request
     if (!response.success || response.data === undefined) {
       throw new AuthOperationError(
-        getServerErrorMessageKey(response) || response.message || fallback,
+        getServerErrorMessageKey(response) ||
+          getServerMessage(response) ||
+          fallback,
         response.code
       )
     }

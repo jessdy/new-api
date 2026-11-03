@@ -39,6 +39,7 @@ type Token struct {
 	PeriodResetAt      int64          `json:"period_reset_at" gorm:"bigint;default:0"`
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
+	AllowUserQuotaQuery  bool           `json:"allow_user_quota_query"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`

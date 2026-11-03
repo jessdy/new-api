@@ -18,16 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Download } from 'lucide-react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
+import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { MODEL_PRICING_ISSUES_QUERY_KEY } from '@/features/system-settings/models/pricing-issues'
 
 import {
   activateTaskPlugin,
@@ -39,6 +40,7 @@ import {
   resolvePluginSourceUrl,
   type InstallState,
 } from '../lib/marketplace'
+import { toastPluginChange } from '../lib/plugin-change-toast'
 import { fetchPluginIconDataUri } from '../lib/plugin-icon-file'
 import {
   computeSourceSha256,
@@ -51,6 +53,12 @@ import { MarketplaceCapabilities } from './marketplace-capabilities'
 import { PluginIcon } from './plugin-icon'
 import { PluginIntegrityCheck } from './plugin-integrity-check'
 import { SourceDiff } from './source-diff'
+
+const PluginChangelogPanel = lazy(() =>
+  import('./plugin-changelog-panel').then((module) => ({
+    default: module.PluginChangelogPanel,
+  }))
+)
 
 export type MarketplaceInstallTarget = {
   source: MarketplaceSource
@@ -154,7 +162,11 @@ function MarketplaceInstallContent(
         icon: sourceQuery.data.icon ?? undefined,
       })
       if (detail.plugin && !detail.plugin.active) {
-        await activateTaskPlugin(detail.meta.key, detail.meta.version)
+        const notice = await activateTaskPlugin(
+          detail.meta.key,
+          detail.meta.version
+        )
+        return { ...detail, pricing_issues: notice?.pricing_issues ?? [] }
       }
       return detail
     },
@@ -164,13 +176,17 @@ function MarketplaceInstallContent(
       queryClient.invalidateQueries({
         queryKey: ['task-plugin-versions', pluginKey],
       })
+      queryClient.invalidateQueries({
+        queryKey: MODEL_PRICING_ISSUES_QUERY_KEY,
+      })
     },
     onSuccess: (detail) => {
-      toast.success(
+      toastPluginChange(
         t('Installed {{name}} v{{version}}', {
           name: detail.meta.name,
           version: detail.meta.version,
-        })
+        }),
+        detail.pricing_issues
       )
       props.onOpenChange(false)
     },
@@ -181,7 +197,7 @@ function MarketplaceInstallContent(
   if (fetchError instanceof PluginSourceFetchError) {
     fetchErrorMessage =
       fetchError.reason === 'too_large'
-        ? t('Plugin source exceeds the 1 MiB limit.')
+        ? t('Plugin source exceeds the 8 MiB limit.')
         : t(
             'Could not fetch the plugin source from this browser. The host may block cross-origin requests or be unreachable.'
           )
@@ -300,7 +316,10 @@ function MarketplaceInstallContent(
             }
             installMutation.reset()
             setSelectedVersion(version)
-            if (target.installState.status !== 'not_installed') {
+            if (
+              target.installState.status !== 'not_installed' &&
+              reviewTab !== 'changelog'
+            ) {
               setReviewTab(
                 version === target.installState.installedVersion
                   ? 'details'
@@ -323,13 +342,19 @@ function MarketplaceInstallContent(
         onValueChange={setReviewTab}
         className='min-w-0 gap-3'
       >
-        <TabsList className='w-full'>
-          <TabsTrigger value='details'>{t('Plugin details')}</TabsTrigger>
-          {hasInstalledPlugin && (
-            <TabsTrigger value='diff'>{t('Version differences')}</TabsTrigger>
-          )}
-          <TabsTrigger value='source'>{t('Full source')}</TabsTrigger>
-        </TabsList>
+        <div className='min-w-0 overflow-x-auto'>
+          <TabsList
+            className='w-full min-w-max'
+            aria-label={t('Plugin details')}
+          >
+            <TabsTrigger value='details'>{t('Plugin details')}</TabsTrigger>
+            {hasInstalledPlugin && (
+              <TabsTrigger value='diff'>{t('Version differences')}</TabsTrigger>
+            )}
+            <TabsTrigger value='source'>{t('Full source')}</TabsTrigger>
+            <TabsTrigger value='changelog'>{t('Changelog')}</TabsTrigger>
+          </TabsList>
+        </div>
         {hasInstalledPlugin && (
           <TabsContent value='diff' className='min-w-0 space-y-2'>
             {sourceStatus}
@@ -366,6 +391,17 @@ function MarketplaceInstallContent(
               void sourceQuery.refetch()
             }}
           />
+        </TabsContent>
+        <TabsContent value='changelog' className='min-w-0 space-y-2'>
+          {reviewTab === 'changelog' && (
+            <Suspense fallback={<LoadingState />}>
+              <PluginChangelogPanel
+                indexUrl={target.source.index_url}
+                plugin={target.plugin}
+                version={selectedVersion}
+              />
+            </Suspense>
+          )}
         </TabsContent>
         <TabsContent value='source' className='min-w-0 space-y-2'>
           {sourceStatus}

@@ -46,15 +46,25 @@ export function safeDivide(
  */
 export function calculateDashboardStats(data: QuotaDataItem[]) {
   return data.reduce(
-    (acc, item) => ({
-      totalQuota: acc.totalQuota + (Number(item.quota) || 0),
-      totalCount: acc.totalCount + (Number(item.count) || 0),
-      totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
-      promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
-      completionTokens:
-        acc.completionTokens + (Number(item.completion_tokens) || 0),
-      cacheTokens: acc.cacheTokens + (Number(item.cache_tokens) || 0),
-    }),
+    (acc, item) => {
+      const cacheRead = item.cache_read_tokens ?? 0
+      const cacheCreation = item.cache_creation_tokens ?? 0
+      return {
+        totalQuota: acc.totalQuota + (Number(item.quota) || 0),
+        totalCount: acc.totalCount + (Number(item.count) || 0),
+        totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
+        promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
+        completionTokens:
+          acc.completionTokens + (Number(item.completion_tokens) || 0),
+        cacheTokens: acc.cacheTokens + (Number(item.cache_tokens) || 0),
+        totalCacheReadTokens:
+          acc.totalCacheReadTokens +
+          (Number.isFinite(cacheRead) ? Math.max(0, cacheRead) : 0),
+        totalCacheCreationTokens:
+          acc.totalCacheCreationTokens +
+          (Number.isFinite(cacheCreation) ? Math.max(0, cacheCreation) : 0),
+      }
+    },
     {
       totalQuota: 0,
       totalCount: 0,
@@ -62,6 +72,8 @@ export function calculateDashboardStats(data: QuotaDataItem[]) {
       promptTokens: 0,
       completionTokens: 0,
       cacheTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheCreationTokens: 0,
     }
   )
 }
