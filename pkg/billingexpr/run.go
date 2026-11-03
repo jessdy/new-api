@@ -56,26 +56,17 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars, use
 		RequestRules: append([]RequestRuleTrace(nil), requestRules...),
 	}
 	headers := normalizeHeaders(request.Headers)
+	// Default for u("image_count") when Usage omits it (HTTP OpenAI image
+	// agent/channel cost). Do not read Usage sample zeros into this path —
+	// visual price editors dry-run task vectors with image_count:0 and must
+	// still save; the 1..MaxImageN bound applies only to HTTP ImageCount /
+	// bare image_count quantity billing.
 	imageCount := 1
-	// Bare image_count and u("image_count") both bill image quantity. HTTP
-	// image agent/channel cost often uses only the latter; treat either as a
-	// quantity expression so EstimatedImageCount and u() agree.
-	needsImageCount := usedVars["image_count"] || usedUsageKeys["image_count"]
-	if needsImageCount {
-		if request.ImageCount != nil {
-			imageCount = *request.ImageCount
-		} else if request.Usage != nil {
-			if raw, ok := request.Usage["image_count"]; ok {
-				switch v := raw.(type) {
-				case float64:
-					imageCount = int(v)
-				case int:
-					imageCount = v
-				case int64:
-					imageCount = int(v)
-				}
-			}
-		}
+	if request.ImageCount != nil {
+		imageCount = *request.ImageCount
+	}
+	needsHTTPImageCount := usedVars["image_count"] || (usedUsageKeys["image_count"] && request.ImageCount != nil)
+	if needsHTTPImageCount {
 		if imageCount < 1 || imageCount > dto.MaxImageN {
 			return 0, trace, fmt.Errorf("image_count must be between 1 and %d", dto.MaxImageN)
 		}

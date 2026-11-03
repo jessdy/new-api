@@ -19,16 +19,21 @@ func TestTaskUsageExpressionUsesFactsAndTaskQuotaConversion(t *testing.T) {
 }
 
 func TestTaskUsageNilCoalesceDefaultsWhenUsageMissing(t *testing.T) {
-	// HTTP image agent cost and task estimates often multiply u("image_count")
-	// with an empty Usage map. The runtime defaults image_count→1 and
-	// input_image_count→0 so both the bare and ?? forms succeed; other u()
-	// keys still return nil.
+	// HTTP image agent cost multiplies u("image_count") with an empty Usage map.
+	// Defaults: missing image_count→1, input_image_count→0. Visual editors also
+	// dry-run schema vectors with image_count:0; that must remain a valid $0 run.
 	bare := `tier("base", u("image_count") * 0.02 + u("input_image_count") * 0)`
-	cost, trace, err := RunExprWithRequest(bare, TokenParams{}, RequestInput{Usage: map[string]any{}})
+	cost, _, err := RunExprWithRequest(bare, TokenParams{}, RequestInput{Usage: map[string]any{}})
 	require.NoError(t, err)
 	assert.Equal(t, 0.02, cost)
-	require.NotNil(t, trace.ImageCount)
-	assert.Equal(t, 1, *trace.ImageCount)
+
+	cost, _, err = RunExprWithRequest(bare, TokenParams{}, RequestInput{Usage: map[string]any{
+		"image_count":       float64(0),
+		"input_image_count": float64(0),
+		"output_image_type": "qima_output_1k",
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, cost)
 
 	safe := `tier("base", (u("image_count") ?? 1) * 0.02 + (u("input_image_count") ?? 0) * 0)`
 	cost, _, err = RunExprWithRequest(safe, TokenParams{}, RequestInput{Usage: map[string]any{}})
@@ -36,7 +41,7 @@ func TestTaskUsageNilCoalesceDefaultsWhenUsageMissing(t *testing.T) {
 	assert.Equal(t, 0.02, cost)
 
 	n := 3
-	cost, trace, err = RunExprWithRequest(bare, TokenParams{}, RequestInput{ImageCount: &n})
+	cost, trace, err := RunExprWithRequest(bare, TokenParams{}, RequestInput{ImageCount: &n})
 	require.NoError(t, err)
 	assert.Equal(t, 0.06, cost)
 	require.NotNil(t, trace.ImageCount)
