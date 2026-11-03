@@ -17,3 +17,16 @@ func TestTaskUsageExpressionUsesFactsAndTaskQuotaConversion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4_000_000, result.ActualQuotaAfterGroup)
 }
+
+func TestTaskUsageNilCoalesceDefaultsWhenUsageMissing(t *testing.T) {
+	// Image upstreams that omit usage leave u("image_count") nil; expressions
+	// must coalesce before multiplying or agent/task cost fails at submit.
+	bare := `tier("base", u("image_count") * 0.02 + u("input_image_count") * 0)`
+	_, _, err := RunExprWithRequest(bare, TokenParams{}, RequestInput{Usage: map[string]any{}})
+	require.ErrorContains(t, err, "invalid operation: <nil> * float64")
+
+	safe := `tier("base", (u("image_count") ?? 1) * 0.02 + (u("input_image_count") ?? 0) * 0)`
+	cost, _, err := RunExprWithRequest(safe, TokenParams{}, RequestInput{Usage: map[string]any{}})
+	require.NoError(t, err)
+	assert.Equal(t, 0.02, cost)
+}

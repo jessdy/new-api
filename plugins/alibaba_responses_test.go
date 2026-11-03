@@ -1524,6 +1524,8 @@ func TestAlibabaOpenAIImageCountDerivationAndRender(t *testing.T) {
 		{"qwen-image-3.0 reports output_image_count", "qwen-image-3.0-pro", map[string]any{"choices": twoImagesOneChoice},
 			map[string]any{"output_width": 1024, "output_height": 1024, "input_image_count": 0, "input_image_type": "qima_input_1k", "output_image_count": 2, "output_image_type": "qima_output_1k"},
 			map[string]any{"image_count": float64(2), "output_image_type": "qima_output_1k", "input_image_count": float64(0)}, 2, false},
+		{"qwen-image-3.0 without usage still emits input_image_count", "qwen-image-3.0", map[string]any{"choices": twoImagesOneChoice}, nil,
+			map[string]any{"image_count": float64(2), "input_image_count": float64(0)}, 2, false},
 		{"one choice with two images and no usage counts payloads", "qwen-image-2.0-pro", map[string]any{"choices": twoImagesOneChoice}, nil,
 			map[string]any{"image_count": float64(2)}, 2, false},
 		{"usage.image_count is preferred", "wan2.6-t2i", map[string]any{"choices": twoImagesOneChoice}, map[string]any{"image_count": 2},

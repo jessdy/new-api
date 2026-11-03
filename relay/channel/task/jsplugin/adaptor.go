@@ -272,7 +272,7 @@ func (a *TaskAdaptor) ExtractUsageFactsValidated(c *gin.Context, info *relaycomm
 		return nil, fmt.Errorf("plugin usage hook failed")
 	}
 	if value == nil {
-		return nil, nil
+		return a.withUsageFactDefaults(nil, info.UpstreamModelName, info.OriginModelName), nil
 	}
 	facts, ok := value.(map[string]any)
 	if !ok {
@@ -282,7 +282,7 @@ func (a *TaskAdaptor) ExtractUsageFactsValidated(c *gin.Context, info *relaycomm
 	if err != nil {
 		return nil, err
 	}
-	return validated, nil
+	return a.withUsageFactDefaults(validated, info.UpstreamModelName, info.OriginModelName), nil
 }
 
 func (a *TaskAdaptor) AdjustBillingOnSubmit(info *relaycommon.RelayInfo, taskData []byte) map[string]float64 {
@@ -1914,11 +1914,17 @@ func (a *TaskAdaptor) validatedUsageRatios(facts map[string]any, models ...strin
 func (a *TaskAdaptor) validatedCompletionUsageFacts(facts any, models ...string) (map[string]any, error) {
 	usageSchema, _ := a.plugin.Meta.UsageForModels(models...)
 	if facts == nil {
+		// An omitted completion object keeps the submit reservation.
 		return nil, nil
 	}
 	values, ok := facts.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("plugin usage hook must return an object")
+	}
+	if len(values) == 0 {
+		// An empty object also keeps the reservation; do not seed defaults
+		// that would overwrite a higher submit-time image_count on settle.
+		return values, nil
 	}
 	validated := make(map[string]any, len(values))
 	for key, value := range values {
@@ -1957,7 +1963,47 @@ func (a *TaskAdaptor) validatedCompletionUsageFacts(facts any, models ...string)
 			}
 		}
 	}
-	return validated, nil
+	// Fill optional companion counts (for example input_image_count) when the
+	// plugin reported some facts but omitted fields the expression still reads.
+	return a.withUsageFactDefaults(validated, models...), nil
+}
+
+// withUsageFactDefaults fills declared count fields the plugin omitted so
+// expressions such as u("image_count") * price do not see nil when the
+// upstream response has no usage object. image_count defaults to 1 (one
+// requested image); other count fields default to 0. Seconds and tokens are
+// left unset so a missing duration cannot silently undercharge.
+func (a *TaskAdaptor) withUsageFactDefaults(facts map[string]any, models ...string) map[string]any {
+	schema, _ := a.plugin.Meta.UsageForModels(models...)
+	if len(schema) == 0 {
+		return facts
+	}
+	out := facts
+	if out == nil {
+		out = make(map[string]any, len(schema))
+	} else {
+		out = maps.Clone(out)
+	}
+	for key, field := range schema {
+		if _, exists := out[key]; exists {
+			continue
+		}
+		if len(field.Enum) > 0 || field.Type == "boolean" {
+			continue
+		}
+		if field.Type != "" && field.Type != "number" {
+			continue
+		}
+		if field.Unit != "count" {
+			continue
+		}
+		if key == "image_count" {
+			out[key] = float64(1)
+			continue
+		}
+		out[key] = float64(0)
+	}
+	return out
 }
 
 func validateUsageValue(value any, schema pluginruntime.UsageFieldSchema) (float64, error) {

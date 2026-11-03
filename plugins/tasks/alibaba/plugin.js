@@ -238,7 +238,7 @@ export const meta = {
     en: "Alibaba Cloud Bailian image and video generation (Wan, HappyHorse, Qwen-Image, Z-Image)",
     zh: "阿里云百炼图片与视频生成（万相、HappyHorse、千问图像、Z-Image）",
   },
-  version: "1.6.0",
+  version: "1.6.1",
   author: { name: "QuantumNous" },
   channelTypes: [17],
   // Literal metadata also supports the dashboard's static script preview.
@@ -773,6 +773,9 @@ function imageContent(body) {
 // flattened across output.results[] and every choices[].message.content[]
 // part; payload-less entries are never counted. An inconsistent upstream
 // count is rejected so the host keeps the reservation instead of guessing.
+// Qwen-Image-3.0 always emits input_image_count (0 for T2I) even when the
+// upstream omits usage, so expressions like u("input_image_count") * price
+// do not see nil.
 function imageUsage(ctx, body) {
   const usage = (body && body.usage) || {};
   const content = imageContent(body);
@@ -794,6 +797,7 @@ function imageUsage(ctx, body) {
     if (QWEN_IMAGE3_USAGE_SCHEMA.output_image_type.enum.includes(usage.output_image_type)) facts.output_image_type = usage.output_image_type;
     if (Number.isInteger(usage.input_image_count) && usage.input_image_count >= 0 && usage.input_image_count <= 3)
       facts.input_image_count = usage.input_image_count;
+    else facts.input_image_count = 0;
   }
   return facts;
 }

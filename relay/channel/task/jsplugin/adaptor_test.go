@@ -2498,6 +2498,29 @@ export function build(name, arg) { return results[name](arg); }
 	assert.Equal(t, "original", source["items"].([]any)[3].(map[string]any)["label"])
 }
 
+func TestTaskUsageFactDefaultsFillDeclaredCountFields(t *testing.T) {
+	source := `
+export const meta={apiVersion:1,key:"count-defaults",name:"Count defaults",version:"1.0.0",author:{name:"Test"},models:["img"],fetchMode:"per_task",usageSchema:{image_count:{type:"number",unit:"count"},input_image_count:{type:"number",unit:"count"}}};
+export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/submit",body:ctx.requestBody};}
+export function extractUsage(){return {};}
+export function parseSubmitResponse(){return {taskId:"img"};}
+export function buildQueryRequest(ctx){return {url:ctx.baseUrl+"/query"};}
+export function parseTaskResult(){return {status:"SUCCESS"};}
+`
+	plugin, err := pluginruntime.CompilePlugin(source, pluginruntime.Options{})
+	require.NoError(t, err)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/submit", nil)
+	c.Set("task_request", map[string]any{"prompt": "a cat"})
+	info := &relaycommon.RelayInfo{OriginModelName: "img", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "img", ChannelBaseUrl: "https://provider.example"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	adaptor := New(plugin)
+	adaptor.Init(info)
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+	facts, err := adaptor.ExtractUsageFactsValidated(c, info)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"image_count": float64(1), "input_image_count": float64(0)}, facts)
+}
+
 func TestTaskSubmitHooksReceiveIndependentRequestSnapshots(t *testing.T) {
 	source := `
 export const meta={apiVersion:1,key:"request-copy",name:"Request copy",version:"1.0.0",author:{name:"Test"},models:["copy"],fetchMode:"per_task",usageSchema:{units:{type:"number",unit:"count"}}};
