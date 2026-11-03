@@ -776,6 +776,39 @@ func PrepareChannelCostPricing(c *gin.Context, info *relaycommon.RelayInfo, mode
 	return nil
 }
 
+// EnsureTaskImageUsageDefaults fills image count facts that task expressions
+// multiply, when the plugin or upstream left them absent/nil. Without this,
+// u("image_count") * price fails with nil*float64 at agent/channel/retail
+// pre-consume — the same failure (u("image_count") ?? 1) avoids in the expr.
+func EnsureTaskImageUsageDefaults(expression string, facts map[string]any) map[string]any {
+	keys := billingexpr.UsedUsageKeys(expression)
+	if len(keys) == 0 {
+		return facts
+	}
+	out := facts
+	cloned := false
+	ensure := func(key string, value float64) {
+		if !keys[key] {
+			return
+		}
+		if current, exists := out[key]; exists && current != nil {
+			return
+		}
+		if !cloned {
+			if out == nil {
+				out = make(map[string]any, len(keys))
+			} else {
+				out = maps.Clone(out)
+			}
+			cloned = true
+		}
+		out[key] = value
+	}
+	ensure("image_count", 1)
+	ensure("input_image_count", 0)
+	return out
+}
+
 func PrepareAgentTaskCostPricing(info *relaycommon.RelayInfo, facts map[string]any) error {
 	if info == nil || info.AgentId <= 0 {
 		return nil
@@ -802,6 +835,7 @@ func PrepareAgentTaskCostPricing(info *relaycommon.RelayInfo, facts map[string]a
 	if billingexpr.UsesFixedPricing(expression) {
 		return fmt.Errorf("fixed pricing is not supported for task usage expressions")
 	}
+	facts = EnsureTaskImageUsageDefaults(expression, facts)
 	cost, trace, err := billingexpr.RunExprWithRequest(
 		expression,
 		billingexpr.TokenParams{},
@@ -895,6 +929,7 @@ func PrepareChannelTaskCostPricing(info *relaycommon.RelayInfo, facts map[string
 	if billingexpr.UsesFixedPricing(expression) {
 		return fmt.Errorf("fixed pricing is not supported for task usage expressions")
 	}
+	facts = EnsureTaskImageUsageDefaults(expression, facts)
 	cost, trace, err := billingexpr.RunExprWithRequest(
 		expression,
 		billingexpr.TokenParams{},

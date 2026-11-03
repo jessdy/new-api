@@ -792,6 +792,21 @@ func TestInputPreConsumeMultiplierLegacyAndRequestPrices(t *testing.T) {
 	}
 }
 
+func TestEnsureTaskImageUsageDefaultsFillsNilImageCounts(t *testing.T) {
+	expr := `tier("base", u("image_count") * 0.02 + u("input_image_count") * 0)`
+	for _, facts := range []map[string]any{nil, {}, {"image_count": nil}, {"image_count": float64(1)}} {
+		filled := EnsureTaskImageUsageDefaults(expr, facts)
+		cost, _, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: filled})
+		require.NoError(t, err, "facts=%v filled=%v", facts, filled)
+		assert.Equal(t, 0.02, cost)
+		assert.Equal(t, float64(1), filled["image_count"])
+		assert.Equal(t, float64(0), filled["input_image_count"])
+	}
+	// Preserve an explicit non-nil count from the plugin.
+	filled := EnsureTaskImageUsageDefaults(expr, map[string]any{"image_count": float64(3), "input_image_count": float64(2)})
+	assert.Equal(t, map[string]any{"image_count": float64(3), "input_image_count": float64(2)}, filled)
+}
+
 // priceTestReservation observes the reservation requested before image submission.
 type priceTestReservation struct{ held int }
 
