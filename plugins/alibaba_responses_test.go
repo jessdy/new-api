@@ -387,6 +387,13 @@ func TestAlibabaWanModelCapabilities(t *testing.T) {
 		{"wanx2.1-t2v-turbo", map[string]any{"prompt": "a cat"}, "720P", []string{"480P", "720P"}, "1280*720", "", "video-generation", 5},
 		{"wanx2.1-i2v-plus", map[string]any{"img_url": "https://cdn.example/first.png"}, "720P", []string{"720P"}, "", "", "video-generation", 5},
 		{"wanx2.1-i2v-turbo", map[string]any{"img_url": "https://cdn.example/first.png"}, "720P", []string{"480P", "720P"}, "", "", "video-generation", 5},
+		{"happyhorse-1.1-t2v", map[string]any{"prompt": "a cat"}, "1080P", []string{"480P", "720P", "1080P"}, "", "16:9", "video-generation", 5},
+		{"happyhorse-1.0-t2v", map[string]any{"prompt": "a cat"}, "1080P", []string{"720P", "1080P"}, "", "16:9", "video-generation", 5},
+		{"happyhorse-1.1-i2v", map[string]any{"media": []any{map[string]any{"type": "first_frame", "url": "https://cdn.example/first.png"}}}, "1080P", []string{"480P", "720P", "1080P"}, "", "", "video-generation", 5},
+		{"happyhorse-1.0-i2v", map[string]any{"media": []any{map[string]any{"type": "first_frame", "url": "https://cdn.example/first.png"}}}, "1080P", []string{"720P", "1080P"}, "", "", "video-generation", 5},
+		{"happyhorse-1.1-r2v", map[string]any{"prompt": "a cat", "media": []any{map[string]any{"type": "reference_image", "url": "https://cdn.example/ref.png"}}}, "1080P", []string{"480P", "720P", "1080P"}, "", "16:9", "video-generation", 5},
+		{"happyhorse-1.0-r2v", map[string]any{"prompt": "a cat", "media": []any{map[string]any{"type": "reference_image", "url": "https://cdn.example/ref.png"}}}, "1080P", []string{"720P", "1080P"}, "", "16:9", "video-generation", 5},
+		{"happyhorse-1.0-video-edit", map[string]any{"prompt": "restyle", "media": []any{map[string]any{"type": "video", "url": "https://cdn.example/clip.mp4"}}}, "1080P", []string{"720P", "1080P"}, "", "", "video-generation", 30},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			value, err := plugin.Engine.CallPath(t.Context(), "native", []string{"createVideoTask"}, map[string]any{
@@ -418,10 +425,13 @@ func TestAlibabaWanModelCapabilities(t *testing.T) {
 			} else {
 				assert.NotContains(t, parameters, "ratio")
 			}
-			if tc.model == "wan2.2-s2v" {
+			if tc.model == "wan2.2-s2v" || tc.model == "happyhorse-1.0-video-edit" {
 				assert.NotContains(t, parameters, "duration")
 			} else {
 				assert.Equal(t, float64(5), parameters["duration"])
+			}
+			if strings.HasPrefix(tc.model, "happyhorse-") {
+				assert.NotContains(t, parameters, "prompt_extend")
 			}
 			for _, resolution := range tc.allowed {
 				request["resolution"] = resolution
@@ -560,6 +570,9 @@ func TestAlibabaWanDurationValidation(t *testing.T) {
 		{"wan2.2-kf2v-flash", []int{5}, []any{3, 10}},
 		{"wanx2.1-i2v-turbo", []int{3, 4, 5}, []any{2, 6}},
 		{"wan2.2-s2v", []int{1, 19}, []any{-1, 0, 20, 3601}},
+		{"happyhorse-1.1-t2v", []int{3, 15}, []any{-1, 0, 1, 2, 16, 2.5}},
+		{"happyhorse-1.1-i2v", []int{3, 15}, []any{2, 16}},
+		{"happyhorse-1.1-r2v", []int{3, 15}, []any{2, 16}},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			request := map[string]any{"model": tc.model, "prompt": "a cat", "image": "https://cdn.example/first.png"}
@@ -669,6 +682,9 @@ func TestAlibabaWanCompletionFactsAndArtifacts(t *testing.T) {
 		{"flash silent output settles as silent", "wan2.6-i2v-flash", map[string]any{"duration": 5, "SR": 720, "audio": false}, map[string]any{"seconds": float64(5), "resolution": "720P", "audio": false}},
 		{"flash without audio flag keeps the estimate", "wan2.6-i2v-flash", map[string]any{"duration": 5, "SR": 1080}, map[string]any{"seconds": float64(5), "resolution": "1080P"}},
 		{"audio flag is ignored for models priced without it", "wan2.6-i2v", map[string]any{"duration": 5, "SR": 1080, "audio": false}, map[string]any{"seconds": float64(5), "resolution": "1080P"}},
+		{"HappyHorse t2v uses output duration", "happyhorse-1.1-t2v", map[string]any{"duration": 5, "SR": 720}, map[string]any{"seconds": float64(5), "resolution": "720P"}},
+		{"HappyHorse video-edit bills input plus output", "happyhorse-1.0-video-edit", map[string]any{"input_video_duration": 6.62, "output_video_duration": 6.62, "duration": 13.24, "SR": 720}, map[string]any{"seconds": 13.24, "resolution": "720P"}},
+		{"HappyHorse video-edit missing input keeps reservation", "happyhorse-1.0-video-edit", map[string]any{"output_video_duration": 6, "SR": 1080}, map[string]any{"resolution": "1080P"}},
 		{"missing usage keeps reservation", "wan2.7-t2v", map[string]any{}, nil},
 		{"oversized duration rejected by host", "wan2.2-s2v", map[string]any{"duration": 1e30, "SR": 480}, nil},
 		{"negative input cannot reduce Wan3 charge", "wan3.0-video", map[string]any{"input_video_duration": -5, "output_video_duration": 10}, nil},

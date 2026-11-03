@@ -1,5 +1,8 @@
 // Protocol capabilities, not prices. Keep defaults and validation shared by
 // native requests, compatibility protocols, and submission billing facts.
+// HappyHorse t2v/r2v aspect ratios (i2v follows the first frame; video-edit has none).
+const HAPPYHORSE_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "4:5", "5:4", "9:21", "21:9"];
+
 const WAN_MODELS = {
   "wan3.0-video": { kind: "all", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", maxDuration: 30 },
   "wan3.0-video-prime": { kind: "all", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", maxDuration: 30 },
@@ -21,6 +24,19 @@ const WAN_MODELS = {
   "wanx2.1-t2v-turbo": { kind: "size", resolutions: ["480P", "720P"], defaultResolution: "720P", durations: [5] },
   "wanx2.1-i2v-plus": { kind: "image", resolutions: ["720P"], defaultResolution: "720P", durations: [5] },
   "wanx2.1-i2v-turbo": { kind: "image", resolutions: ["480P", "720P"], defaultResolution: "720P", durations: [3, 4, 5] },
+  // HappyHorse: same video-synthesis endpoint; no prompt_extend; duration 3–15s.
+  // https://help.aliyun.com/zh/model-studio/happyhorse-text-to-video-api-reference
+  // https://help.aliyun.com/zh/model-studio/happyhorse-image-to-video-api-reference
+  // https://help.aliyun.com/zh/model-studio/happyhorse-reference-to-video-api-reference
+  // https://help.aliyun.com/zh/model-studio/happyhorse-video-edit-api-reference
+  "happyhorse-1.1-t2v": { kind: "t2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, ratios: HAPPYHORSE_RATIOS, promptExtend: false },
+  "happyhorse-1.0-t2v": { kind: "t2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, ratios: HAPPYHORSE_RATIOS, promptExtend: false },
+  "happyhorse-1.1-i2v": { kind: "hh_i2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, promptExtend: false },
+  "happyhorse-1.0-i2v": { kind: "hh_i2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, promptExtend: false },
+  "happyhorse-1.1-r2v": { kind: "hh_r2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, ratios: HAPPYHORSE_RATIOS, promptExtend: false },
+  "happyhorse-1.0-r2v": { kind: "hh_r2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15, ratios: HAPPYHORSE_RATIOS, promptExtend: false },
+  // Video-edit bills input + output seconds; duration follows the input clip (capped at 15s).
+  "happyhorse-1.0-video-edit": { kind: "hh_edit", resolutions: ["720P", "1080P"], defaultResolution: "1080P", promptExtend: false },
 };
 
 // HTTP contracts (SDK synchronous calls can also wrap polling):
@@ -219,10 +235,10 @@ export const meta = {
   name: "Alibaba Bailian",
   icon: "Bailian.Color",
   description: {
-    en: "Alibaba Cloud Bailian image and video generation (Wan, Qwen-Image, Z-Image)",
-    zh: "阿里云百炼图片与视频生成（万相、千问图像、Z-Image）",
+    en: "Alibaba Cloud Bailian image and video generation (Wan, HappyHorse, Qwen-Image, Z-Image)",
+    zh: "阿里云百炼图片与视频生成（万相、HappyHorse、千问图像、Z-Image）",
   },
-  version: "1.5.0",
+  version: "1.6.0",
   author: { name: "QuantumNous" },
   channelTypes: [17],
   // Literal metadata also supports the dashboard's static script preview.
@@ -250,6 +266,13 @@ export const meta = {
     "wanx2.1-t2v-turbo",
     "wanx2.1-i2v-plus",
     "wanx2.1-i2v-turbo",
+    "happyhorse-1.1-t2v",
+    "happyhorse-1.0-t2v",
+    "happyhorse-1.1-i2v",
+    "happyhorse-1.0-i2v",
+    "happyhorse-1.1-r2v",
+    "happyhorse-1.0-r2v",
+    "happyhorse-1.0-video-edit",
     "wan2.7-image-pro",
     "wan2.7-image",
     "wan2.6-image",
@@ -864,16 +887,24 @@ function convert(ctx) {
   if (image && input.img_url === undefined) input.img_url = image;
   Object.assign(input, objectValue(metadata.input, "metadata.input"));
   const nativeParameters = objectValue(metadata.parameters, "metadata.parameters");
-  const parameters = profile.kind === "speech" ? {} : { prompt_extend: true };
-  for (const key of ["resolution", "ratio", "prompt_extend", "watermark", "audio", "seed", "shot_type"]) {
+  const parameters = {};
+  if (profile.kind !== "speech" && profile.promptExtend !== false) parameters.prompt_extend = true;
+  for (const key of ["resolution", "ratio", "prompt_extend", "watermark", "audio", "seed", "shot_type", "audio_setting"]) {
     if (req[key] !== undefined) parameters[key] = req[key];
   }
   Object.assign(parameters, nativeParameters);
+  if (profile.promptExtend === false) delete parameters.prompt_extend;
   for (const key of ["prompt_extend", "watermark", "audio"]) {
     if (parameters[key] != null && typeof parameters[key] !== "boolean") throw new Error(key + " must be a boolean");
   }
   if (parameters.seed != null && (!Number.isInteger(parameters.seed) || parameters.seed < (profile.kind === "all" ? -1 : 0) || parameters.seed > 2147483647))
     throw new Error("seed must be an integer between " + (profile.kind === "all" ? -1 : 0) + " and 2147483647");
+  if (parameters.audio_setting != null) {
+    if (profile.kind !== "hh_edit") throw new Error("audio_setting is only supported by happyhorse video-edit");
+    if (parameters.audio_setting !== "auto" && parameters.audio_setting !== "origin") throw new Error("audio_setting must be auto or origin");
+  } else if (profile.kind !== "hh_edit") {
+    delete parameters.audio_setting;
+  }
 
   const sizeValue = nativeParameters.size ?? req.size;
   const size = sizeValue == null || sizeValue === "" ? {} : videoSize(sizeValue);
@@ -885,9 +916,9 @@ function convert(ctx) {
     ratio = size.ratio ?? parameters.ratio ?? "16:9";
   }
   if (!profile.resolutions.includes(resolution)) throw new Error(upstreamModel + " resolution must be one of " + profile.resolutions.join(", "));
-  if (profile.kind === "size" || profile.kind === "t2v" || profile.kind === "all") {
-    const ratios = ["16:9", "9:16", "1:1", "4:3", "3:4"];
-    if (profile.kind === "all") ratios.push("21:9", "adaptive");
+  const usesRatio = profile.kind === "size" || profile.kind === "t2v" || profile.kind === "all" || profile.kind === "hh_r2v";
+  if (usesRatio) {
+    const ratios = profile.ratios || ["16:9", "9:16", "1:1", "4:3", "3:4"].concat(profile.kind === "all" ? ["21:9", "adaptive"] : []);
     if (!ratios.includes(ratio)) throw new Error(upstreamModel + " ratio must be one of " + ratios.join(", "));
   }
   if (profile.kind === "size") {
@@ -899,7 +930,7 @@ function convert(ctx) {
   } else {
     parameters.resolution = resolution;
     delete parameters.size;
-    if (profile.kind === "t2v" || profile.kind === "all") parameters.ratio = ratio;
+    if (profile.kind === "t2v" || profile.kind === "all" || profile.kind === "hh_r2v") parameters.ratio = ratio;
     else delete parameters.ratio; // Image-derived aspect ratios are not configurable.
   }
 
@@ -912,11 +943,23 @@ function convert(ctx) {
     if (rawDuration != null && (!Number.isFinite(duration) || duration <= 0 || duration >= 20))
       throw new Error("wan2.2-s2v duration must be positive and less than 20 seconds; output follows the audio");
     delete parameters.duration;
+  } else if (profile.kind === "hh_edit") {
+    // Output length follows the input clip (capped at 15s); the API has no duration field.
+    delete parameters.duration;
   } else {
+    const minDuration = profile.minDuration || 2;
     if (profile.durations) {
       if (!profile.durations.includes(duration)) throw new Error(upstreamModel + " duration must be one of " + profile.durations.join(", "));
-    } else if (!(profile.kind === "all" && duration === -1) && (!Number.isInteger(duration) || duration < 2 || duration > profile.maxDuration)) {
-      throw new Error(upstreamModel + " duration must be " + (profile.kind === "all" ? "-1 or " : "") + "an integer between 2 and " + profile.maxDuration);
+    } else if (!(profile.kind === "all" && duration === -1) && (!Number.isInteger(duration) || duration < minDuration || duration > profile.maxDuration)) {
+      throw new Error(
+        upstreamModel +
+          " duration must be " +
+          (profile.kind === "all" ? "-1 or " : "") +
+          "an integer between " +
+          minDuration +
+          " and " +
+          profile.maxDuration
+      );
     }
     parameters.duration = duration;
   }
@@ -952,6 +995,56 @@ function convert(ctx) {
       if (!trimmed(input.prompt) && !input.media.length) throw new Error("wan3.0-video requires prompt or input.media");
     }
     if (!input.media.length) delete input.media;
+    delete input.img_url;
+    delete input.first_frame_url;
+    delete input.last_frame_url;
+    delete input.audio_url;
+  } else if (profile.kind === "hh_i2v") {
+    if (input.media !== undefined && !Array.isArray(input.media)) throw new Error("input.media must be an array");
+    if (!input.media || input.media.length === 0) {
+      const first = trimmed(input.first_frame_url) || trimmed(input.img_url) || firstImage(req);
+      input.media = first ? [{ type: "first_frame", url: first }] : [];
+    }
+    if (input.media.length !== 1 || input.media[0].type !== "first_frame" || !trimmed(input.media[0].url))
+      throw new Error(upstreamModel + " requires exactly one first_frame media entry");
+    delete input.img_url;
+    delete input.first_frame_url;
+    delete input.last_frame_url;
+    delete input.audio_url;
+    if (!trimmed(input.prompt)) delete input.prompt;
+  } else if (profile.kind === "hh_r2v") {
+    if (input.media !== undefined && !Array.isArray(input.media)) throw new Error("input.media must be an array");
+    if (!input.media || input.media.length === 0) {
+      input.media = [];
+      for (const image of req.images || []) if (trimmed(image)) input.media.push({ type: "reference_image", url: trimmed(image) });
+      if (!input.media.length) {
+        const first = trimmed(input.img_url) || trimmed(input.first_frame_url) || firstImage(req);
+        if (first) input.media.push({ type: "reference_image", url: first });
+      }
+    }
+    if (!input.media.length) throw new Error(upstreamModel + " requires 1 to 9 reference_image media entries");
+    if (input.media.length > 9) throw new Error(upstreamModel + " accepts at most 9 reference_image media entries");
+    for (const media of input.media) {
+      if (!media || media.type !== "reference_image" || !trimmed(media.url)) throw new Error(upstreamModel + " media entries must be reference_image with a url");
+    }
+    if (!trimmed(input.prompt)) throw new Error(upstreamModel + " requires prompt");
+    delete input.img_url;
+    delete input.first_frame_url;
+    delete input.last_frame_url;
+    delete input.audio_url;
+  } else if (profile.kind === "hh_edit") {
+    if (!Array.isArray(input.media) || !input.media.length) throw new Error(upstreamModel + " requires input.media with one video");
+    let videos = 0;
+    let references = 0;
+    for (const media of input.media) {
+      if (!media || !trimmed(media.url)) throw new Error("invalid input.media type or url");
+      if (media.type === "video") videos++;
+      else if (media.type === "reference_image") references++;
+      else throw new Error(upstreamModel + " media type must be video or reference_image");
+    }
+    if (videos !== 1) throw new Error(upstreamModel + " requires exactly one video media entry");
+    if (references > 5) throw new Error(upstreamModel + " accepts at most 5 reference_image media entries");
+    if (!trimmed(input.prompt)) throw new Error(upstreamModel + " requires prompt");
     delete input.img_url;
     delete input.first_frame_url;
     delete input.last_frame_url;
@@ -1200,6 +1293,7 @@ export function extractUsage(ctx) {
   let seconds = body.parameters.duration;
   if (kind === "speech") seconds = 20;
   else if (kind === "all" && (hasVideo || seconds === -1)) seconds = 30;
+  else if (kind === "hh_edit") seconds = 30; // pre-consume for input + output (each up to 15s)
   if (ctx.usagePurpose === "billing_ratios") {
     const ratios = { seconds: seconds };
     const resolution = resolutionRatio(body);
@@ -1228,10 +1322,12 @@ export function extractUsageOnComplete(task, taskResult, body) {
   const usage = (body && body.usage) || {};
   const facts = {};
   const model = modelKey(task && (task.upstreamModel || task.model));
-  if (model === "wan3.0-video" || model === "wan3.0-video-prime" || (!model && usage.input_video_duration != null)) {
+  const billsInputAndOutput =
+    model === "wan3.0-video" || model === "wan3.0-video-prime" || model === "happyhorse-1.0-video-edit" || (!model && usage.input_video_duration != null);
+  if (billsInputAndOutput) {
     const inputSeconds = usage.input_video_duration;
     const outputSeconds = usage.output_video_duration ?? usage.duration;
-    // Partial Wan3 statistics cannot establish the total billable duration.
+    // Partial input+output statistics cannot establish the total billable duration.
     // Keep the reservation when either side is missing. Invalid supplied facts
     // reach the host validator unchanged, which logs and rejects them.
     if (inputSeconds != null && outputSeconds != null) {
@@ -1452,7 +1548,11 @@ export const protocols = {
       const action = videoAction(requestBody);
       const profile = WAN_MODELS[modelKey(ctx.upstreamModel || model)];
       const nativeInput = objectValue((requestBody.metadata || {}).input, "metadata.input");
-      if (!trimmed(nativeInput.prompt ?? prompt) && (action === "text_to_video" || (profile && (profile.kind === "size" || profile.kind === "t2v"))))
+      if (
+        !trimmed(nativeInput.prompt ?? prompt) &&
+        (action === "text_to_video" ||
+          (profile && (profile.kind === "size" || profile.kind === "t2v" || profile.kind === "hh_r2v" || profile.kind === "hh_edit")))
+      )
         throw new Error("input is required");
       return { kind: "submit", model: model, action: action, requestBody: requestBody };
     },
