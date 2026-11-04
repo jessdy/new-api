@@ -533,21 +533,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		return hosttypes.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", billingModelName, err)
 	}
 
-	// Expression coefficients are $/1M tokens prices; convert to quota the same way per-call billing does.
-	quotaBeforeGroup := rawCost / 1_000_000 * common.QuotaPerUnit
-	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * groupRatioInfo.GroupRatio)
-	if err != nil {
-		return hosttypes.PriceData{}, err
-	}
-
-	freeModel := false
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
-		if groupRatioInfo.GroupRatio == 0 {
-			preConsumedQuota = 0
-			freeModel = true
-		}
-	}
-
+	taskUsage := billingexpr.UsesTaskUsageMeter(exprStr)
 	exprHash := billingexpr.ExprHashString(exprStr)
 	snapshot := &billingexpr.BillingSnapshot{
 		BillingMode:               billing_setting.BillingModeTieredExpr,
@@ -557,13 +543,31 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		GroupRatio:                groupRatioInfo.GroupRatio,
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: estimatedCompletionTokens,
-		EstimatedQuotaBeforeGroup: quotaBeforeGroup,
-		EstimatedQuotaAfterGroup:  preConsumedQuota,
 		EstimatedTier:             trace.MatchedTier,
 		EstimatedBillingUnit:      trace.BillingUnit,
 		EstimatedFixedPrice:       trace.FixedPrice,
 		QuotaPerUnit:              common.QuotaPerUnit,
 		ExprVersion:               billingexpr.ExprVersion(exprStr),
+		TaskUsageBilling:          taskUsage,
+	}
+	// Token/fixed expressions are $/1M (fixed() scales by 1e6). u("…")*USD
+	// meters are already dollars and must not be divided by 1e6 — otherwise
+	// image models priced like task plugins settle at quota 0 on HTTP image.
+	quotaBeforeGroup := billingexpr.QuotaFromExprOutput(rawCost, snapshot)
+	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * groupRatioInfo.GroupRatio)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	snapshot.EstimatedQuotaBeforeGroup = quotaBeforeGroup
+	snapshot.EstimatedQuotaAfterGroup = preConsumedQuota
+
+	freeModel := false
+	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		if groupRatioInfo.GroupRatio == 0 {
+			preConsumedQuota = 0
+			freeModel = true
+			snapshot.EstimatedQuotaAfterGroup = 0
+		}
 	}
 	info.TieredBillingSnapshot = snapshot
 	info.BillingRequestInput = &requestInput
@@ -667,11 +671,8 @@ func prepareIndependentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, 
 		if err != nil {
 			return result, fmt.Errorf("%s for model %s failed: %w", label, modelName, err)
 		}
-		estimatedQuota, err := billingexpr.QuotaRoundStrict(rawCost / 1_000_000 * common.QuotaPerUnit)
-		if err != nil {
-			return result, err
-		}
-		result.Snapshot = &billingexpr.BillingSnapshot{
+		taskUsage := billingexpr.UsesTaskUsageMeter(expr)
+		snap := &billingexpr.BillingSnapshot{
 			BillingMode:               billing_setting.BillingModeTieredExpr,
 			ModelName:                 modelName,
 			ExprString:                expr,
@@ -679,14 +680,21 @@ func prepareIndependentCostPricing(c *gin.Context, info *relaycommon.RelayInfo, 
 			GroupRatio:                1,
 			EstimatedPromptTokens:     promptTokens,
 			EstimatedCompletionTokens: estimatedCompletionTokens,
-			EstimatedQuotaBeforeGroup: float64(estimatedQuota),
-			EstimatedQuotaAfterGroup:  estimatedQuota,
 			EstimatedTier:             trace.MatchedTier,
 			EstimatedBillingUnit:      trace.BillingUnit,
 			EstimatedFixedPrice:       trace.FixedPrice,
 			QuotaPerUnit:              common.QuotaPerUnit,
 			ExprVersion:               billingexpr.ExprVersion(expr),
+			TaskUsageBilling:          taskUsage,
 		}
+		quotaBeforeGroup := billingexpr.QuotaFromExprOutput(rawCost, snap)
+		estimatedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup)
+		if err != nil {
+			return result, err
+		}
+		snap.EstimatedQuotaBeforeGroup = quotaBeforeGroup
+		snap.EstimatedQuotaAfterGroup = estimatedQuota
+		result.Snapshot = snap
 		result.RequestInput = &requestInput
 		return result, nil
 	}

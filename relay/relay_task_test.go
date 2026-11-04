@@ -507,9 +507,12 @@ func TestSharedEndpointBillingKeepsOrdinaryAndPluginPricesSeparate(t *testing.T)
 		wantError                           string
 		alias, shared, legacy               bool
 	}{
-		{name: "task usage price is rejected by ordinary relay", expression: taskExpr, taskQuota: 50000, taskFinal: 75000, wantError: "task usage expression"},
-		{name: "enum fallback cannot silently bill zero", expression: `u("output_image_type") == "2k" ? tier("2k", u("image_count") * 0.08) : tier("1k", 0.04)`, taskQuota: 20000, taskFinal: 20000, wantError: "task usage expression"},
-		{name: "unselected usage branch is rejected", expression: `true ? tier("flat", 0.04) : tier("images", u("image_count"))`, taskQuota: 20000, taskFinal: 20000, wantError: "task usage expression"},
+		// Ordinary HTTP image accepts u("…")*USD meters with TaskUsageBilling
+		// conversion so Bailian-style prices still settle when traffic falls
+		// through to an OpenAI-compatible channel instead of the task plugin.
+		{name: "task usage price bills dollars on ordinary relay", expression: taskExpr, ordinaryQuota: 50000, taskQuota: 50000, taskFinal: 75000},
+		{name: "enum fallback keeps dollar units on ordinary relay", expression: `u("output_image_type") == "2k" ? tier("2k", u("image_count") * 0.08) : tier("1k", 0.04)`, ordinaryQuota: 20000, taskQuota: 20000, taskFinal: 20000},
+		{name: "unselected usage branch keeps dollar units", expression: `true ? tier("flat", 0.04) : tier("images", u("image_count"))`, ordinaryQuota: 20000, taskQuota: 20000, taskFinal: 20000},
 		{name: "dynamic usage key is rejected", expression: `tier("images", u(u("unit")) * 0.05)`, taskQuota: 50000, taskFinal: 75000, wantError: "task usage expression"},
 		{name: "plain task USD price is ambiguous", expression: `tier("flat", 0.04)`, taskQuota: 20000, taskFinal: 20000, wantError: "shares its billing expression"},
 		{name: "alias retains task USD price", expression: `tier("flat", 0.04)`, taskQuota: 20000, taskFinal: 20000, wantError: "shares its billing expression", alias: true},
@@ -602,7 +605,7 @@ func TestSharedEndpointBillingKeepsOrdinaryAndPluginPricesSeparate(t *testing.T)
 				return
 			}
 			require.NotNil(t, ordinary.TieredBillingSnapshot)
-			assert.False(t, ordinary.TieredBillingSnapshot.TaskUsageBilling)
+			assert.Equal(t, billingexpr.UsesTaskUsageMeter(tc.expression), ordinary.TieredBillingSnapshot.TaskUsageBilling)
 			settlement, err = billingexpr.ComputeTieredQuotaWithRequest(ordinary.TieredBillingSnapshot, billingexpr.TokenParams{P: 1000, Len: 1000}, *ordinary.BillingRequestInput)
 			require.NoError(t, err)
 			assert.Equal(t, tc.ordinaryQuota, settlement.ActualQuotaAfterGroup)
