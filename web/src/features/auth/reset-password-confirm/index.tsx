@@ -32,8 +32,10 @@ import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { createServerError } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { AuthLayout } from '../auth-layout'
+import { AUTH_INPUT_CLASSNAME } from '../lib/field-styles'
 
 export type ResetPasswordSearchParams = {
   email?: string
@@ -141,6 +143,7 @@ export function ResetPasswordConfirm({
               value={email || ''}
               disabled
               placeholder={t('Waiting for email...')}
+              className={AUTH_INPUT_CLASSNAME}
             />
           </div>
 
@@ -152,12 +155,13 @@ export function ResetPasswordConfirm({
                   id='password'
                   value={newPassword}
                   disabled
-                  className='font-mono'
+                  className={cn(AUTH_INPUT_CLASSNAME, 'font-mono')}
                 />
                 <Button
                   type='button'
                   size='icon'
                   variant='outline'
+                  className='size-14 shrink-0 rounded-md'
                   onClick={handleCopy}
                 >
                   {copied ? (
@@ -174,7 +178,7 @@ export function ResetPasswordConfirm({
           )}
 
           <Button
-            className='w-full'
+            className='h-12 w-full justify-center gap-2 rounded-md text-sm font-semibold'
             onClick={
               newPassword
                 ? () => navigate({ to: '/sign-in', replace: true })

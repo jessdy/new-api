@@ -7,36 +7,39 @@ function stableStringify(obj) {
   return JSON.stringify(obj, null, 2) + '\n'
 }
 
-const key =
-  'Request samples from oldest to newest: green succeeded, yellow mixed, red failed, gray pending.'
-
 const newKeys = {
   en: {
-    [key]: key,
+    'Sign in to continue': 'Sign in to continue',
+    'One account for every model and protocol':
+      'One account for every model and protocol',
   },
   zh: {
-    [key]:
-      '请求样本按从旧到新排列：绿色成功，黄色部分失败，红色失败，浅灰待测。',
+    'Sign in to continue': '登录以继续',
+    'One account for every model and protocol': '一个账号，畅用全部模型与协议',
   },
   'zh-TW': {
-    [key]:
-      '請求樣本按從舊到新排列：綠色成功，黃色部分失敗，紅色失敗，淺灰待測。',
+    'Sign in to continue': '登入以繼續',
+    'One account for every model and protocol': '一個帳號，暢用全部模型與協定',
   },
   fr: {
-    [key]:
-      'Échantillons de requêtes du plus ancien au plus récent : vert réussi, jaune mixte, rouge échoué, gris en attente.',
+    'Sign in to continue': 'Connectez-vous pour continuer',
+    'One account for every model and protocol':
+      'Un compte pour tous les modèles et protocoles',
   },
   ja: {
-    [key]:
-      'リクエストサンプル（古い→新しい）：緑は成功、黄は一部失敗、赤は失敗、灰は未実施。',
+    'Sign in to continue': '続行するにはサインインしてください',
+    'One account for every model and protocol':
+      '1 つのアカウントで、すべてのモデルとプロトコルに対応',
   },
   ru: {
-    [key]:
-      'Выборки запросов от старых к новым: зелёный — успех, жёлтый — частично, красный — ошибка, серый — ожидание.',
+    'Sign in to continue': 'Войдите, чтобы продолжить',
+    'One account for every model and protocol':
+      'Один аккаунт — все модели и протоколы',
   },
   vi: {
-    [key]:
-      'Mẫu yêu cầu từ cũ đến mới: xanh thành công, vàng hỗn hợp, đỏ thất bại, xám đang chờ.',
+    'Sign in to continue': 'Đăng nhập để tiếp tục',
+    'One account for every model and protocol':
+      'Một tài khoản cho mọi mô hình và giao thức',
   },
 }
 

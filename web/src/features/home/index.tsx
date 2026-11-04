@@ -122,12 +122,14 @@ export function Home() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
+      <div className='relative isolate overflow-x-clip'>
+        <Hero isAuthenticated={isAuthenticated} />
+        <Stats />
+        <Features />
+        <HowItWorks />
+        <CTA isAuthenticated={isAuthenticated} />
+        <Footer />
+      </div>
     </PublicLayout>
   )
 }

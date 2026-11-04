@@ -45,6 +45,7 @@ import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { AUTH_INPUT_CLASSNAME } from '@/features/auth/lib/field-styles'
 import {
   getAffiliateCode,
   saveAffiliateCode,
@@ -253,7 +254,7 @@ export function SignUpForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn('grid gap-4', className)}
+        className={cn('grid gap-5', className)}
         {...props}
       >
         {/* Username Field */}
@@ -261,10 +262,16 @@ export function SignUpForm({
           control={form.control}
           name='username'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Username')}</FormLabel>
+            <FormItem className='gap-2'>
+              <FormLabel className='text-sm font-medium'>
+                {t('Username')}
+              </FormLabel>
               <FormControl>
-                <Input placeholder={t('Enter your username')} {...field} />
+                <Input
+                  placeholder={t('Enter your username')}
+                  className={AUTH_INPUT_CLASSNAME}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -276,11 +283,14 @@ export function SignUpForm({
           control={form.control}
           name='password'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Password')}</FormLabel>
+            <FormItem className='gap-2'>
+              <FormLabel className='text-sm font-medium'>
+                {t('Password')}
+              </FormLabel>
               <FormControl>
                 <PasswordInput
                   placeholder={t('Enter password (8–128 characters)')}
+                  className={AUTH_INPUT_CLASSNAME}
                   {...field}
                 />
               </FormControl>
@@ -294,10 +304,16 @@ export function SignUpForm({
           control={form.control}
           name='confirmPassword'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Confirm password')}</FormLabel>
+            <FormItem className='gap-2'>
+              <FormLabel className='text-sm font-medium'>
+                {t('Confirm password')}
+              </FormLabel>
               <FormControl>
-                <PasswordInput placeholder={t('Confirm password')} {...field} />
+                <PasswordInput
+                  placeholder={t('Confirm password')}
+                  className={AUTH_INPUT_CLASSNAME}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -308,12 +324,15 @@ export function SignUpForm({
           control={form.control}
           name='invite_code'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Invite code (optional)')}</FormLabel>
+            <FormItem className='gap-2'>
+              <FormLabel className='text-sm font-medium'>
+                {t('Invite code (optional)')}
+              </FormLabel>
               <FormControl>
                 <Input
                   placeholder={t('Enter invite code')}
                   autoComplete='off'
+                  className={AUTH_INPUT_CLASSNAME}
                   {...field}
                   onChange={(event) => {
                     field.onChange(event)
@@ -335,14 +354,15 @@ export function SignUpForm({
               control={form.control}
               name='email'
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
+                <FormItem className='gap-2'>
+                  <FormLabel className='text-sm font-medium'>
                     {t('Email (required for verification)')}
                   </FormLabel>
                   <FormControl>
                     <Input
                       placeholder={t('name@example.com')}
                       type='email'
+                      className={AUTH_INPUT_CLASSNAME}
                       {...field}
                     />
                   </FormControl>
@@ -358,11 +378,13 @@ export function SignUpForm({
                   placeholder={t('Verification code')}
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
+                  className={AUTH_INPUT_CLASSNAME}
                 />
               </div>
               <Button
                 variant='outline'
                 type='button'
+                className='h-12 rounded-md px-4'
                 disabled={
                   isLoading ||
                   isSendingCode ||
@@ -399,7 +421,7 @@ export function SignUpForm({
         {/* Submit Button */}
         <Button
           type='submit'
-          className='mt-2 w-full justify-center gap-2'
+          className='mt-1 h-12 w-full justify-center gap-2 rounded-md text-sm font-semibold'
           disabled={
             isLoading ||
             (requiresLegalConsent && !agreedToLegal) ||

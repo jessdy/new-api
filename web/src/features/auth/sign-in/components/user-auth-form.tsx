@@ -45,6 +45,7 @@ import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { AUTH_INPUT_CLASSNAME } from '@/features/auth/lib/field-styles'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
 import {
   requestPasskeyAssertion,
@@ -308,7 +309,7 @@ export function UserAuthForm({
             variant='outline'
             disabled={passkeyButtonDisabled}
             onClick={handlePasskeyLogin}
-            className='h-11 w-full justify-center gap-2 rounded-lg'
+            className='h-11 w-full justify-center gap-2 rounded-md'
           >
             {isPasskeyLoading ? (
               <Loader2 className='h-4 w-4 animate-spin' />
@@ -346,7 +347,7 @@ export function UserAuthForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn('grid gap-4', className)}
+        className={cn('grid gap-5', className)}
         {...props}
       >
         {hasAlternativeLogin && alternativeLoginMethods}
@@ -358,11 +359,14 @@ export function UserAuthForm({
               control={form.control}
               name='username'
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Username or Email')}</FormLabel>
+                <FormItem className='gap-2'>
+                  <FormLabel className='text-sm font-medium'>
+                    {t('Username or Email')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       placeholder={t('Enter your username or email')}
+                      className={AUTH_INPUT_CLASSNAME}
                       {...field}
                     />
                   </FormControl>
@@ -376,11 +380,14 @@ export function UserAuthForm({
               control={form.control}
               name='password'
               render={({ field }) => (
-                <FormItem className='relative'>
-                  <FormLabel>{t('Password')}</FormLabel>
+                <FormItem className='relative gap-2'>
+                  <FormLabel className='text-sm font-medium'>
+                    {t('Password')}
+                  </FormLabel>
                   <FormControl>
                     <PasswordInput
                       placeholder={t('Enter password')}
+                      className={AUTH_INPUT_CLASSNAME}
                       {...field}
                     />
                   </FormControl>
@@ -398,7 +405,7 @@ export function UserAuthForm({
             {/* Submit Button */}
             <Button
               type='submit'
-              className='mt-2 w-full justify-center gap-2'
+              className='mt-1 h-12 w-full justify-center gap-2 rounded-md text-sm font-semibold'
               disabled={isLoading}
             >
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}

@@ -41,6 +41,7 @@ import {
   PASSWORD_RESET_COUNTDOWN,
 } from '@/features/auth/constants'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { AUTH_INPUT_CLASSNAME } from '@/features/auth/lib/field-styles'
 import { useCountdown } from '@/hooks/use-countdown'
 import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
@@ -111,7 +112,11 @@ export function ForgotPasswordForm({
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input
+                  placeholder='name@example.com'
+                  className={AUTH_INPUT_CLASSNAME}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -120,13 +125,17 @@ export function ForgotPasswordForm({
 
         <Button
           type='submit'
-          className='mt-2'
+          className='mt-1 h-12 w-full justify-center gap-2 rounded-md text-sm font-semibold'
           disabled={isLoading || isActive || !turnstileReady}
         >
           {isActive
             ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })
             : t('Send reset email')}
-          {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+          {isLoading ? (
+            <Loader2 className='h-4 w-4 animate-spin' />
+          ) : (
+            <ArrowRight className='h-4 w-4' />
+          )}
         </Button>
 
         {isTurnstileEnabled && (
