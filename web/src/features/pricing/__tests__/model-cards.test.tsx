@@ -269,7 +269,9 @@ describe('model cards', () => {
     const popover = await screen.findByText('Protocols')
     const panel = popover.closest('[data-slot="hover-card-content"]')
     expect(panel).not.toBeNull()
-    expect(within(panel as HTMLElement).getByText(groups.join(', '))).toBeVisible()
+    expect(
+      within(panel as HTMLElement).getByText(groups.join(', '))
+    ).toBeVisible()
     expect(
       within(panel as HTMLElement).getByText(tags.join(', '))
     ).toBeVisible()
@@ -382,11 +384,8 @@ describe('model cards', () => {
         usdExchangeRate={6}
       />
     )
-    expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$0.0045\s*\/\s*1K/
-    )
-    expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$0.0225\s*\/\s*1K/
+    expect(screen.getByRole('group', { name: 'Pricing' })).toHaveTextContent(
+      /1K[\s\S]*Input\s*\$0.0045\s*\/\s*Output\s*\$0.0225/
     )
   })
 
@@ -402,14 +401,30 @@ describe('model cards', () => {
         selectedGroup='default'
       />
     )
-    expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$0.15\s*\/\s*1M/
+    expect(screen.getByRole('group', { name: 'Pricing' })).toHaveTextContent(
+      /1M[\s\S]*Input\s*\$0.15\s*\/\s*Output\s*\$0.6\s*\/\s*Cache Read\s*\$0.003/
     )
-    expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$0.6\s*\/\s*1M/
+  })
+
+  it('shows each dynamic pricing tier on its own row', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr:
+            'len <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3) : tier("long", p * 6 + c * 22.5 + cr * 0.6)',
+        })}
+        onClick={vi.fn()}
+        tokenUnit='M'
+        selectedGroup='default'
+      />
     )
-    expect(screen.getByText('Cache Read').parentElement).toHaveTextContent(
-      /\$0.003\s*\/\s*1M/
+    const pricing = screen.getByRole('group', { name: 'Pricing' })
+    expect(pricing).toHaveTextContent(
+      /standard[\s\S]*Input\s*\$3\s*\/\s*Output\s*\$15\s*\/\s*Cache Read\s*\$0.3\s*\/\s*1M/
+    )
+    expect(pricing).toHaveTextContent(
+      /long[\s\S]*Input\s*\$6\s*\/\s*Output\s*\$22.5\s*\/\s*Cache Read\s*\$0.6\s*\/\s*1M/
     )
   })
 
@@ -447,8 +462,8 @@ describe('model cards', () => {
         selectedGroup='default'
       />
     )
-    expect(screen.getByText('Cache Read').parentElement).toHaveTextContent(
-      /\$0.5\s*\/\s*1M/
+    expect(screen.getByRole('group', { name: 'Pricing' })).toHaveTextContent(
+      /Cache Read\s*\$0.5\s*\/\s*1M/
     )
   })
 

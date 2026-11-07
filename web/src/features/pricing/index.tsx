@@ -26,13 +26,10 @@ import {
   LoadingSkeleton,
   EmptyState,
   SearchBar,
-  PricingTable,
-  PricingToolbar,
   PricingQuickFilters,
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
@@ -56,20 +53,14 @@ export function Pricing() {
 
   const {
     searchInput,
-    sortBy,
     vendorFilter,
     groupFilter,
     tagFilter,
     tokenUnit,
-    viewMode,
     showRechargePrice,
     setSearchInput,
-    setSortBy,
     setVendorFilter,
     setTagFilter,
-    setTokenUnit,
-    setViewMode,
-    setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
     availableTags,
@@ -107,29 +98,15 @@ export function Pricing() {
       )
     }
 
-    if (viewMode === VIEW_MODES.CARD) {
-      return (
-        <ModelCardGrid
-          models={filteredModels}
-          onModelClick={handleModelClick}
-          priceRate={priceRate}
-          usdExchangeRate={usdExchangeRate}
-          tokenUnit={tokenUnit}
-          showRechargePrice={showRechargePrice}
-          selectedGroup={groupFilter}
-        />
-      )
-    }
-
     return (
-      <PricingTable
+      <ModelCardGrid
         models={filteredModels}
+        onModelClick={handleModelClick}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
         tokenUnit={tokenUnit}
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
-        onModelClick={handleModelClick}
       />
     )
   }
@@ -138,7 +115,7 @@ export function Pricing() {
     return (
       <PublicLayout showMainContainer={false}>
         <div className='mx-auto w-full max-w-[1800px] px-3 pt-20 pb-8 sm:px-6 sm:pt-28 sm:pb-10 xl:px-8'>
-          <LoadingSkeleton viewMode={viewMode} />
+          <LoadingSkeleton />
         </div>
       </PublicLayout>
     )
@@ -200,22 +177,7 @@ export function Pricing() {
             />
           </header>
 
-          <main className='min-w-0 space-y-4'>
-            <PricingToolbar
-              filteredCount={filteredModels.length}
-              totalCount={models?.length}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-              tokenUnit={tokenUnit}
-              onTokenUnitChange={setTokenUnit}
-              showRechargePrice={showRechargePrice}
-              onRechargePriceChange={setShowRechargePrice}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-            />
-
-            {renderPricingContent()}
-          </main>
+          <main className='min-w-0'>{renderPricingContent()}</main>
 
           {selectedModel && (
             <ModelDetailsDrawer

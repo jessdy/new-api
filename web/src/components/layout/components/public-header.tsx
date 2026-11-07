@@ -27,7 +27,6 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -266,7 +265,7 @@ export function PublicHeader(props: PublicHeaderProps) {
       >
         <nav className='relative mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:h-20 md:px-6'>
           {/* Logo */}
-          <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:[container-type:normal] lg:mr-6 lg:flex-none'>
+          <div className='flex min-w-0 flex-1 items-center lg:mr-6 lg:flex-none'>
             <Link
               to={homeUrl}
               className='group flex min-w-0 items-center gap-2 md:gap-3'
@@ -281,7 +280,6 @@ export function PublicHeader(props: PublicHeaderProps) {
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
               </span>
             </Link>
-            <SystemUpdateAction presentation='version' />
           </div>
 
           {/* Desktop nav */}
