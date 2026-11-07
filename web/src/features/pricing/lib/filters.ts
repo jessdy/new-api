@@ -25,7 +25,7 @@ import {
   type QuotaTypeOption,
   type SortOption,
 } from '../constants'
-import type { PricingModel } from '../types'
+import type { PricingModel, PricingVendor } from '../types'
 import { compileBillingExpression } from './billing-expression/parser'
 import { visitExpression } from './billing-expression/types'
 import {
@@ -294,4 +294,14 @@ export function filterByTag(
     const modelTags = parseTags(m.tags).map((t) => t.toLowerCase())
     return modelTags.includes(tagLower)
   })
+}
+
+/** Higher sort_order first; equal values fall back to name. */
+export function comparePricingVendors(
+  a: PricingVendor,
+  b: PricingVendor
+): number {
+  const orderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0)
+  if (orderDiff !== 0) return orderDiff
+  return a.name.localeCompare(b.name)
 }

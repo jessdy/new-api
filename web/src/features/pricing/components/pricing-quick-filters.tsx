@@ -24,7 +24,7 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
 import { FILTER_ALL } from '../constants'
-import { parseTags } from '../lib/filters'
+import { comparePricingVendors, parseTags } from '../lib/filters'
 import type { PricingModel, PricingVendor } from '../types'
 
 type FilterOption = {
@@ -141,7 +141,8 @@ export const PricingQuickFilters = memo(function PricingQuickFilters(
       label: t('All'),
       count: props.models.length,
     },
-    ...props.vendors
+    ...[...props.vendors]
+      .sort(comparePricingVendors)
       .map((vendor) => ({
         value: vendor.name,
         label: vendor.name,

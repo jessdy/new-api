@@ -200,6 +200,46 @@ describe('pricing controls', () => {
     }
   )
 
+  it('orders vendor chips by sort_order then name', () => {
+    const base: PricingModel = {
+      id: 1,
+      model_name: 'model-a',
+      vendor_name: 'Vendor A',
+      quota_type: 0,
+      model_ratio: 1,
+      completion_ratio: 1,
+      enable_groups: ['default'],
+    }
+    render(
+      <PricingQuickFilters
+        vendorFilter='all'
+        tagFilter='all'
+        onVendorChange={vi.fn()}
+        onTagChange={vi.fn()}
+        vendors={[
+          { id: 1, name: 'Vendor A', sort_order: 1 },
+          { id: 3, name: 'Vendor C', sort_order: 10 },
+          { id: 2, name: 'Vendor B', sort_order: 10 },
+        ]}
+        tags={[]}
+        models={[
+          base,
+          { ...base, id: 2, model_name: 'model-b', vendor_name: 'Vendor B' },
+          { ...base, id: 3, model_name: 'model-c', vendor_name: 'Vendor C' },
+        ]}
+      />
+    )
+
+    const vendorButtons = within(screen.getByRole('group', { name: 'Vendors' }))
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+
+    expect(vendorButtons[0]).toMatch(/^All/)
+    expect(vendorButtons[1]).toMatch(/^Vendor B/)
+    expect(vendorButtons[2]).toMatch(/^Vendor C/)
+    expect(vendorButtons[3]).toMatch(/^Vendor A/)
+  })
+
   it('counts vendors and tags once in the quick filters under search', async () => {
     const onVendorChange = vi.fn()
     const onTagChange = vi.fn()
@@ -301,9 +341,7 @@ describe('pricing controls', () => {
         { name: /^Vendor A\s*1$/ }
       )
     ).toBeVisible()
-    expect(
-      screen.queryByRole('button', { name: /^Vendor B\s*1$/ })
-    ).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Vendor B\s*1$/ })).toBeNull()
   })
 
   it('changes the token unit and keeps the selected unit pressed when clicked again', async () => {
