@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -80,7 +81,13 @@ export function VendorMutateDialog(props: {
   const pendingNavigation = useRef<(() => void) | null>(null)
   const form = useForm({
     resolver: zodResolver(vendorFormSchema),
-    defaultValues: { name: '', description: '', icon: '', version: '' },
+    defaultValues: {
+      name: '',
+      description: '',
+      icon: '',
+      sort_order: 0,
+      version: '',
+    },
   })
   const query = useQuery({
     queryKey: vendorsQueryKeys.detail(id ?? 0),
@@ -106,6 +113,7 @@ export function VendorMutateDialog(props: {
       name: id ? (value?.name ?? '') : '',
       description: id ? (value?.description ?? '') : '',
       icon: id ? (value?.icon ?? '') : '',
+      sort_order: id ? (value?.sort_order ?? 0) : 0,
       version: id ? (value?.version ?? '') : '',
     })
     loadedKey.current = key
@@ -227,6 +235,30 @@ export function VendorMutateDialog(props: {
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={form.control}
+                        name='sort_order'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Sort Order')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                {...field}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    Number.parseInt(e.target.value, 10) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('Higher values appear first')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       {query.data && id && (
                         <div className='text-muted-foreground space-y-1 border-t pt-3 text-xs'>
                           <p>
@@ -255,6 +287,7 @@ export function VendorMutateDialog(props: {
                                       description:
                                         response.data.description ?? '',
                                       icon: response.data.icon ?? '',
+                                      sort_order: response.data.sort_order ?? 0,
                                       version: response.data.version,
                                     })
                                     save.reset()

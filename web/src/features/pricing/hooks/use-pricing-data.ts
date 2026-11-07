@@ -68,6 +68,7 @@ export function usePricingData(enabled = true) {
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
+        vendor_sort_order: vendor?.sort_order ?? 0,
         group_ratio: data.group_ratio,
       }
     })

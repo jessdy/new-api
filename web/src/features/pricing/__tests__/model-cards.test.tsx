@@ -38,6 +38,7 @@ import {
 import { CachedPriceCell } from '../components/cached-price-cell'
 import { ModelCard } from '../components/model-card'
 import { ModelCardGrid } from '../components/model-card-grid'
+import { ModelPerfBadge } from '../components/model-perf-badge'
 import type { PricingModel } from '../types'
 
 function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
@@ -151,34 +152,30 @@ describe('model cards', () => {
     await user.click(screen.getByRole('button', { name: 'Copy model name' }))
     expect(await navigator.clipboard.readText()).toBe(name)
     expect(onClick).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: 'Details' }))
+    await user.click(
+      screen.getByRole('button', { name: 'View detailed pricing' })
+    )
     expect(onClick).toHaveBeenCalledOnce()
     expect(onClick).toHaveBeenCalledWith(name)
   })
 
-  it('shows missing values without placeholder bars when metrics are unavailable', () => {
+  it('keeps the attributes trigger and pricing details available without card metrics', () => {
     render(<ModelCard model={pricingModel()} onClick={vi.fn()} />)
-    const metrics = screen.getByLabelText(
-      'Performance metrics for the last 24 hours'
-    )
-    expect(within(metrics).getAllByText('—')).toHaveLength(2)
-    expect(within(metrics).getByText('—s')).toBeVisible()
-    expect(within(metrics).getByText('—t/s')).toBeVisible()
-    expect(within(metrics).queryByText(/100/)).not.toBeInTheDocument()
-    const statusStrip = within(metrics).getByRole('img', {
-      name: 'No performance data available',
-    })
-    expect(statusStrip).toHaveTextContent('—')
-    expect(statusStrip.querySelectorAll('[aria-hidden]')).toHaveLength(0)
-    expect(screen.getByText('No description available.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Details' })).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'View attributes' })
+    ).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'View detailed pricing' })
+    ).toBeEnabled()
+    expect(screen.getByText('ID')).toBeVisible()
+    expect(
+      screen.queryByLabelText('Performance metrics for the last 24 hours')
+    ).not.toBeInTheDocument()
   })
 
   it('uses fixed spacing between available status samples', () => {
     render(
-      <ModelCard
-        model={pricingModel()}
-        onClick={vi.fn()}
+      <ModelPerfBadge
         perf={{
           avg_latency_ms: 1200,
           avg_tps: 42,
@@ -232,30 +229,21 @@ describe('model cards', () => {
         />
       </QueryClientProvider>
     )
-    await screen.findByText('99.80%')
+    expect(await screen.findByText('99.80%')).toBeVisible()
     expect(request).toHaveBeenCalledWith('/api/perf-metrics/summary', {
       params: { hours: 24, recent_model: ['active-model', 'idle-model'] },
       paramsSerializer: { indexes: null },
     })
-    const [active, idle] = screen.getAllByLabelText(
-      'Performance metrics for the last 24 hours'
+    expect(screen.getByText(/1\.20s/)).toBeVisible()
+    expect(screen.getByText(/42\.0/)).toBeVisible()
+    const sectionBars = document.querySelectorAll(
+      'header [aria-hidden].bg-red-500, header [aria-hidden].bg-emerald-500'
     )
-    expect(within(active).getByText('1.20s')).toBeVisible()
-    expect(
-      within(active).getByRole('img', { name: 'Success rate' }).children[0]
-    ).toHaveClass('bg-emerald-500')
-    const samples = within(idle).getByRole('img', {
-      name: 'Success rate',
-    }).children
-    expect(samples).toHaveLength(2)
-    expect(samples[0]).toHaveClass('bg-red-500')
-    expect(samples[1]).toHaveClass('bg-emerald-500')
-    expect(within(idle).getByText('—')).toBeVisible()
-    expect(within(idle).getByText('—s')).toBeVisible()
-    expect(within(idle).getByText('—t/s')).toBeVisible()
+    expect(sectionBars.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('keeps group, endpoint and tag overflow counts with their own metadata', () => {
+  it('keeps group, endpoint and tag metadata inside the attributes hover', async () => {
+    const user = userEvent.setup()
     const groups = ['default-with-a-long-group-name', 'premium', 'internal']
     const endpoints = ['openai-response', 'openai', 'claude', 'gemini', 'jina']
     const tags = [
@@ -277,25 +265,17 @@ describe('model cards', () => {
       />
     )
 
-    const groupField = screen.getByText('Groups').parentElement
-    const endpointField = screen.getByText('Endpoints').parentElement
-    if (!groupField || !endpointField) {
-      throw new Error('Expected labeled group and endpoint fields')
-    }
-    const tagField = screen.getByRole('group', { name: 'Tags' })
-    expect(within(groupField).getByText(groups[0])).toBeVisible()
-    expect(within(groupField).getByText('+2')).toHaveAttribute(
-      'title',
-      groups.slice(1).join(', ')
-    )
+    await user.hover(screen.getByRole('button', { name: 'View attributes' }))
+    const popover = await screen.findByText('Protocols')
+    const panel = popover.closest('[data-slot="hover-card-content"]')
+    expect(panel).not.toBeNull()
+    expect(within(panel as HTMLElement).getByText(groups.join(', '))).toBeVisible()
     expect(
-      within(endpointField).getByText('openai-response, openai')
-    ).toHaveAttribute('title', endpoints.join(', '))
-    expect(within(endpointField).getByText('+3')).toBeVisible()
+      within(panel as HTMLElement).getByText(tags.join(', '))
+    ).toBeVisible()
     expect(
-      within(tagField).getByText('video-generation, high-resolution')
-    ).toHaveAttribute('title', tags.join(', '))
-    expect(within(tagField).getByText('+4')).toBeVisible()
+      within(panel as HTMLElement).getByText('openai-response')
+    ).toBeVisible()
     expect(
       within(screen.getByRole('group', { name: 'Pricing' })).getByText(
         'Token-based'
@@ -303,15 +283,18 @@ describe('model cards', () => {
     ).toBeVisible()
   })
 
-  it('omits metadata fields when the model has no groups, endpoints or tags', () => {
+  it('omits metadata fields when the model has no groups, endpoints or tags', async () => {
+    const user = userEvent.setup()
     render(
       <ModelCard
         model={pricingModel({ enable_groups: [] })}
         onClick={vi.fn()}
       />
     )
+    await user.hover(screen.getByRole('button', { name: 'View attributes' }))
+    expect(await screen.findByText(/Attributes may differ/)).toBeVisible()
     expect(screen.queryByText('Groups')).not.toBeInTheDocument()
-    expect(screen.queryByText('Endpoints')).not.toBeInTheDocument()
+    expect(screen.queryByText('Protocols')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('group', { name: 'Tags' })
     ).not.toBeInTheDocument()
@@ -325,9 +308,7 @@ describe('model cards', () => {
     'shows $expected for the reported request success rate $success_rate',
     ({ success_rate, expected }) => {
       render(
-        <ModelCard
-          model={pricingModel()}
-          onClick={vi.fn()}
+        <ModelPerfBadge
           perf={{ avg_latency_ms: 1200, avg_tps: 42, success_rate }}
         />
       )
@@ -351,22 +332,18 @@ describe('model cards', () => {
       usdExchangeRate: 6,
     }
     const { rerender } = render(<ModelCard {...props} tokenUnit='M' />)
-    expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$3\s*\/\s*1M/
-    )
-    expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$9\s*\/\s*1M/
-    )
+    const pricingM = screen.getByRole('group', { name: 'Pricing' })
+    expect(pricingM).toHaveTextContent(/Input\s*\$3/)
+    expect(pricingM).toHaveTextContent(/Output\s*\$9/)
+    expect(pricingM).toHaveTextContent(/1M/)
     expect(screen.getByText('Cached').parentElement).toHaveTextContent(
       /\$0\s*\/\s*1M/
     )
     rerender(<ModelCard {...props} tokenUnit='K' />)
-    expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$0.003\s*\/\s*1K/
-    )
-    expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$0.009\s*\/\s*1K/
-    )
+    const pricingK = screen.getByRole('group', { name: 'Pricing' })
+    expect(pricingK).toHaveTextContent(/Input\s*\$0\.003/)
+    expect(pricingK).toHaveTextContent(/Output\s*\$0\.009/)
+    expect(pricingK).toHaveTextContent(/1K/)
     expect(screen.getByText('Cached').parentElement).toHaveTextContent(
       /\$0\s*\/\s*1K/
     )
@@ -594,7 +571,7 @@ describe('model cards', () => {
     expect(screen.getByText(expression)).toBeVisible()
   })
 
-  it('keeps browsing and missing metric values available after the metrics request fails', async () => {
+  it('keeps browsing available after the metrics request fails', async () => {
     const request = vi
       .spyOn(api, 'get')
       .mockRejectedValue(new Error('metrics unavailable'))
@@ -617,13 +594,11 @@ describe('model cards', () => {
       params: { hours: 24, recent_model: ['example-model'] },
       paramsSerializer: { indexes: null },
     })
-    expect(
-      within(
-        screen.getByLabelText('Performance metrics for the last 24 hours')
-      ).getAllByText(/^—/)
-    ).toHaveLength(4)
+    expect(screen.getByRole('heading', { name: 'example-model' })).toBeVisible()
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Details' }))
+    await user.click(
+      screen.getByRole('button', { name: 'View detailed pricing' })
+    )
     expect(onModelClick).toHaveBeenCalledWith('example-model')
   })
 
@@ -685,9 +660,7 @@ describe('model cards', () => {
     const currentHourStart = Math.floor(Date.now() / 1000 / 3600) * 3600
 
     render(
-      <ModelCard
-        model={pricingModel()}
-        onClick={vi.fn()}
+      <ModelPerfBadge
         perf={{
           avg_latency_ms: 1200,
           avg_tps: 42,
@@ -717,9 +690,7 @@ describe('model cards', () => {
   it('skips invalid samples without inserting gaps or dropping a zero success rate', () => {
     const windowStart = Date.parse('2026-09-07T00:00:00.000Z') / 1000
     render(
-      <ModelCard
-        model={pricingModel()}
-        onClick={vi.fn()}
+      <ModelPerfBadge
         perf={{
           avg_latency_ms: 1200,
           avg_tps: 42,
@@ -762,9 +733,7 @@ describe('model cards', () => {
     ].reverse()
     const originalSeries = [...recentSeries]
     render(
-      <ModelCard
-        model={pricingModel()}
-        onClick={vi.fn()}
+      <ModelPerfBadge
         perf={{
           avg_latency_ms: 1200,
           avg_tps: 42,
@@ -790,9 +759,7 @@ describe('model cards', () => {
     'shows an empty state without bars when the series has no valid samples: %j',
     (series) => {
       render(
-        <ModelCard
-          model={pricingModel()}
-          onClick={vi.fn()}
+        <ModelPerfBadge
           perf={{
             avg_latency_ms: 1200,
             avg_tps: 42,
@@ -816,9 +783,7 @@ describe('model cards', () => {
     const currentHourStart = Math.floor(Date.now() / 1000 / 3600) * 3600
 
     render(
-      <ModelCard
-        model={pricingModel()}
-        onClick={vi.fn()}
+      <ModelPerfBadge
         perf={{
           avg_latency_ms: 1200,
           avg_tps: 42,

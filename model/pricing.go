@@ -1,6 +1,8 @@
 package model
 
 import (
+	"cmp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -126,6 +128,7 @@ type PricingVendor struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Icon        string `json:"icon,omitempty"`
+	SortOrder   int    `json:"sort_order"`
 }
 
 var (
@@ -302,7 +305,7 @@ func updatePricing() {
 	// 初始化默认供应商映射
 	initDefaultVendorMapping(metaMap, vendorMap, enableAbilities)
 
-	// 构建对前端友好的供应商列表
+	// 构建对前端友好的供应商列表（数值越大越靠前）
 	vendorsList = make([]PricingVendor, 0, len(vendorMap))
 	for _, v := range vendorMap {
 		vendorsList = append(vendorsList, PricingVendor{
@@ -310,8 +313,15 @@ func updatePricing() {
 			Name:        v.Name,
 			Description: v.Description,
 			Icon:        v.Icon,
+			SortOrder:   v.SortOrder,
 		})
 	}
+	slices.SortFunc(vendorsList, func(a, b PricingVendor) int {
+		if a.SortOrder != b.SortOrder {
+			return cmp.Compare(b.SortOrder, a.SortOrder)
+		}
+		return cmp.Compare(b.ID, a.ID)
+	})
 
 	modelGroupsMap := make(map[string]*types.Set[string])
 

@@ -19,6 +19,7 @@ type Vendor struct {
 	Name        string         `json:"name" gorm:"size:128;not null;uniqueIndex:uk_vendor_name_delete_at,priority:1"`
 	Description string         `json:"description,omitempty" gorm:"type:text"`
 	Icon        string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
+	SortOrder   int            `json:"sort_order" gorm:"type:int;default:0"`
 	Status      int            `json:"status" gorm:"default:1"`
 	CreatedTime int64          `json:"created_time" gorm:"bigint"`
 	UpdatedTime int64          `json:"updated_time" gorm:"bigint"`
@@ -67,7 +68,7 @@ func (v *Vendor) Update() error {
 			return err
 		}
 		v.CreatedTime, v.Status, v.UpdatedTime = saved.CreatedTime, saved.Status, common.GetTimestamp()
-		return tx.Model(&Vendor{}).Where("id = ?", v.Id).Updates(map[string]any{"name": v.Name, "description": v.Description, "icon": v.Icon, "updated_time": v.UpdatedTime}).Error
+		return tx.Model(&Vendor{}).Where("id = ?", v.Id).Updates(map[string]any{"name": v.Name, "description": v.Description, "icon": v.Icon, "sort_order": v.SortOrder, "updated_time": v.UpdatedTime}).Error
 	})
 	if err == nil {
 		v.Version = VendorRecordVersion(v)
@@ -120,7 +121,7 @@ func SearchVendors(keyword string, offset, limit int, association ...string) ([]
 		return nil, 0, err
 	}
 	var vendors []*Vendor
-	if err := db.Offset(offset).Limit(limit).Order("id DESC").Find(&vendors).Error; err != nil {
+	if err := db.Offset(offset).Limit(limit).Order("sort_order DESC, id DESC").Find(&vendors).Error; err != nil {
 		return nil, 0, err
 	}
 	counts, err := GetVendorModelCounts()

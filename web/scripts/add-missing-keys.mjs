@@ -9,37 +9,25 @@ function stableStringify(obj) {
 
 const newKeys = {
   en: {
-    'Sign in to continue': 'Sign in to continue',
-    'One account for every model and protocol':
-      'One account for every model and protocol',
+    'Higher values appear first': 'Higher values appear first',
   },
   zh: {
-    'Sign in to continue': '登录以继续',
-    'One account for every model and protocol': '一个账号，畅用全部模型与协议',
+    'Higher values appear first': '数值越大越靠前',
   },
   'zh-TW': {
-    'Sign in to continue': '登入以繼續',
-    'One account for every model and protocol': '一個帳號，暢用全部模型與協定',
+    'Higher values appear first': '數值越大越靠前',
   },
   fr: {
-    'Sign in to continue': 'Connectez-vous pour continuer',
-    'One account for every model and protocol':
-      'Un compte pour tous les modèles et protocoles',
+    'Higher values appear first': 'Les valeurs plus élevées apparaissent en premier',
   },
   ja: {
-    'Sign in to continue': '続行するにはサインインしてください',
-    'One account for every model and protocol':
-      '1 つのアカウントで、すべてのモデルとプロトコルに対応',
+    'Higher values appear first': '数値が大きいほど前に表示されます',
   },
   ru: {
-    'Sign in to continue': 'Войдите, чтобы продолжить',
-    'One account for every model and protocol':
-      'Один аккаунт — все модели и протоколы',
+    'Higher values appear first': 'Большие значения отображаются первыми',
   },
   vi: {
-    'Sign in to continue': 'Đăng nhập để tiếp tục',
-    'One account for every model and protocol':
-      'Một tài khoản cho mọi mô hình và giao thức',
+    'Higher values appear first': 'Giá trị lớn hơn sẽ hiện trước',
   },
 }
 
@@ -48,31 +36,42 @@ async function main() {
 
   for (const [locale, trans] of Object.entries(newKeys)) {
     const filePath = path.join(LOCALES_DIR, `${locale}.json`)
-    const json = JSON.parse(await fs.readFile(filePath, 'utf8'))
+    const raw = await fs.readFile(filePath, 'utf8')
+    const data = JSON.parse(raw)
+    const translation = data.translation || data
+    let added = 0
 
-    let count = 0
-    for (const [nextKey, value] of Object.entries(trans)) {
-      if (!Object.prototype.hasOwnProperty.call(json.translation, nextKey)) {
-        json.translation[nextKey] = value
-        count++
-      } else if (json.translation[nextKey] !== value) {
-        json.translation[nextKey] = value
-        count++
+    for (const [key, value] of Object.entries(trans)) {
+      if (!(key in translation)) {
+        translation[key] = value
+        added++
+      } else if (translation[key] === key && value !== key) {
+        translation[key] = value
+        added++
       }
     }
 
-    if (count > 0) {
-      json.translation = Object.fromEntries(
-        Object.entries(json.translation).sort(([a], [b]) => a.localeCompare(b))
-      )
-      await fs.writeFile(filePath, stableStringify(json), 'utf8')
+    const sorted = Object.fromEntries(
+      Object.keys(translation)
+        .sort((a, b) => a.localeCompare(b))
+        .map((k) => [k, translation[k]])
+    )
+
+    if (data.translation) {
+      data.translation = sorted
+      await fs.writeFile(filePath, stableStringify(data))
+    } else {
+      await fs.writeFile(filePath, stableStringify(sorted))
     }
 
-    console.log(`${locale}: ${count} translations applied`)
-    totalAdded += count
+    console.log(`${locale}: ${added} translations applied`)
+    totalAdded += added
   }
 
   console.log(`Total: ${totalAdded}`)
 }
 
-await main()
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

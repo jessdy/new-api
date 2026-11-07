@@ -20,7 +20,11 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { PricingSidebar } from '../components/pricing-sidebar'
+import { PricingQuickFilters } from '../components/pricing-quick-filters'
+import {
+  PricingSidebar,
+  type PricingSidebarProps,
+} from '../components/pricing-sidebar'
 import {
   PricingToolbar,
   type PricingToolbarProps,
@@ -36,15 +40,22 @@ function toolbarProps(): PricingToolbarProps {
     tokenUnit: 'M',
     showRechargePrice: false,
     viewMode: 'card',
+    onSortChange: vi.fn(),
+    onTokenUnitChange: vi.fn(),
+    onRechargePriceChange: vi.fn(),
+    onViewModeChange: vi.fn(),
+  }
+}
+
+function sidebarProps(
+  overrides: Partial<PricingSidebarProps> = {}
+): PricingSidebarProps {
+  return {
     quotaTypeFilter: 'all',
     endpointTypeFilter: 'all',
     vendorFilter: 'all',
     groupFilter: 'all',
     tagFilter: 'all',
-    onSortChange: vi.fn(),
-    onTokenUnitChange: vi.fn(),
-    onRechargePriceChange: vi.fn(),
-    onViewModeChange: vi.fn(),
     onQuotaTypeChange: vi.fn(),
     onEndpointTypeChange: vi.fn(),
     onVendorChange: vi.fn(),
@@ -56,8 +67,8 @@ function toolbarProps(): PricingToolbarProps {
     tags: [],
     models: [],
     hasActiveFilters: false,
-    activeFilterCount: 0,
     onClearFilters: vi.fn(),
+    ...overrides,
   }
 }
 
@@ -165,7 +176,7 @@ describe('pricing controls', () => {
         ...pricing,
       }
       const models = [model]
-      render(<PricingSidebar {...toolbarProps()} models={models} />)
+      render(<PricingSidebar {...sidebarProps()} models={models} />)
 
       for (const [quotaType, label] of [
         ['token', 'Token-based'],
@@ -189,8 +200,9 @@ describe('pricing controls', () => {
     }
   )
 
-  it('counts each model once per filter and updates counts when the catalog changes', () => {
-    const props = toolbarProps()
+  it('counts vendors and tags once in the quick filters under search', async () => {
+    const onVendorChange = vi.fn()
+    const onTagChange = vi.fn()
     const base: PricingModel = {
       id: 1,
       model_name: 'text-model',
@@ -208,7 +220,6 @@ describe('pricing controls', () => {
         ...base,
         id: 2,
         model_name: 'image-model',
-        quota_type: 1,
         tags: 'chat,Image',
         supported_endpoint_types: ['image-generation'],
       },
@@ -219,52 +230,80 @@ describe('pricing controls', () => {
         vendor_name: 'Vendor B',
         tags: 'Video',
         supported_endpoint_types: ['openai-video'],
-        billing_usage_schema: { seconds: { type: 'number', unit: 'second' } },
       },
     ]
-    const sidebarProps = {
-      ...props,
-      vendors: [
-        { id: 1, name: 'Vendor A' },
-        { id: 2, name: 'Vendor B' },
-      ],
-      tags: ['Chat', 'Image', 'Video'],
-    }
+    const user = userEvent.setup()
     const { rerender } = render(
-      <PricingSidebar {...sidebarProps} models={models} />
+      <PricingQuickFilters
+        vendorFilter='all'
+        tagFilter='all'
+        onVendorChange={onVendorChange}
+        onTagChange={onTagChange}
+        vendors={[
+          { id: 1, name: 'Vendor A' },
+          { id: 2, name: 'Vendor B' },
+        ]}
+        tags={['Chat', 'Image', 'Video']}
+        models={models}
+      />
     )
 
+    const vendorGroup = screen.getByRole('group', { name: 'Vendors' })
+    const tagGroup = screen.getByRole('group', { name: 'Tags' })
     expect(
-      screen.getByRole('button', { name: /^All Vendors\s*3$/ })
-    ).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Vendor A\s*2$/ })).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Vendor B\s*1$/ })).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Chat\s*2$/ })).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Chat\s*1$/ })).toBeVisible()
-    expect(
-      screen.getByRole('button', { name: /^Token-based\s*1$/ })
+      within(vendorGroup).getByRole('button', { name: /^All\s*3$/ })
     ).toBeVisible()
     expect(
-      screen.getByRole('button', { name: /^Per Request\s*1$/ })
+      within(vendorGroup).getByRole('button', { name: /^Vendor A\s*2$/ })
     ).toBeVisible()
     expect(
-      screen.getByRole('button', { name: /^Task billing\s*1$/ })
+      within(vendorGroup).getByRole('button', { name: /^Vendor B\s*1$/ })
+    ).toBeVisible()
+    expect(
+      within(tagGroup).getByRole('button', { name: /^Chat\s*2$/ })
+    ).toBeVisible()
+    expect(
+      within(tagGroup).getByRole('button', { name: /^Image\s*1$/ })
     ).toBeVisible()
 
-    rerender(<PricingSidebar {...sidebarProps} models={[models[1]]} />)
+    await user.click(
+      within(vendorGroup).getByRole('button', { name: /^Vendor A\s*2$/ })
+    )
+    expect(onVendorChange).toHaveBeenCalledWith('Vendor A')
+    await user.click(
+      within(tagGroup).getByRole('button', { name: /^Video\s*1$/ })
+    )
+    expect(onTagChange).toHaveBeenCalledWith('Video')
+
+    rerender(
+      <PricingQuickFilters
+        vendorFilter='all'
+        tagFilter='all'
+        onVendorChange={onVendorChange}
+        onTagChange={onTagChange}
+        vendors={[
+          { id: 1, name: 'Vendor A' },
+          { id: 2, name: 'Vendor B' },
+        ]}
+        tags={['Chat', 'Image', 'Video']}
+        models={[models[1]]}
+      />
+    )
     expect(
-      screen.getByRole('button', { name: /^All Vendors\s*1$/ })
-    ).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Vendor A\s*1$/ })).toBeVisible()
-    expect(screen.queryByRole('button', { name: /^Vendor B\s*1$/ })).toBeNull()
-    expect(screen.getByRole('button', { name: /^Chat\s*1$/ })).toBeVisible()
-    expect(screen.getByRole('button', { name: /^Chat\s*0$/ })).toBeVisible()
-    expect(
-      screen.getByRole('button', { name: /^Token-based\s*0$/ })
+      within(screen.getByRole('group', { name: 'Vendors' })).getByRole(
+        'button',
+        { name: /^All\s*1$/ }
+      )
     ).toBeVisible()
     expect(
-      screen.getByRole('button', { name: /^Task billing\s*0$/ })
+      within(screen.getByRole('group', { name: 'Vendors' })).getByRole(
+        'button',
+        { name: /^Vendor A\s*1$/ }
+      )
     ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: /^Vendor B\s*1$/ })
+    ).toBeNull()
   })
 
   it('changes the token unit and keeps the selected unit pressed when clicked again', async () => {
@@ -323,32 +362,5 @@ describe('pricing controls', () => {
       screen.getByRole('menuitem', { name: 'Input Price: Low to High' })
     )
     expect(props.onSortChange).toHaveBeenCalledWith('input-price-low')
-  })
-
-  it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    const { rerender } = render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: 'Filter' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Filter' })
-    expect(dialog).toHaveAttribute('data-side', 'left')
-    expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled()
-    await user.click(within(dialog).getByRole('button', { name: /premium/ }))
-    expect(props.onGroupChange).toHaveBeenCalledWith('premium')
-    rerender(
-      <PricingToolbar
-        {...props}
-        groupFilter='premium'
-        hasActiveFilters
-        activeFilterCount={1}
-      />
-    )
-    expect(
-      within(dialog).getByRole('button', { name: /premium/ })
-    ).toHaveAttribute('aria-pressed', 'true')
-    await user.click(within(dialog).getByRole('button', { name: 'Reset' }))
-    expect(props.onClearFilters).toHaveBeenCalledOnce()
-    await user.keyboard('{Escape}')
-    expect(await screen.findByRole('button', { name: /Filter/ })).toHaveFocus()
   })
 })

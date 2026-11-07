@@ -329,3 +329,29 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 
 	assert.Nil(t, channel2advancedCustomConfig[401])
 }
+
+func TestPricingVendorsSortedBySortOrder(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	require.NoError(t, DB.Create(&Vendor{Name: "Vendor Low", SortOrder: 1, Status: 1}).Error)
+	require.NoError(t, DB.Create(&Vendor{Name: "Vendor High", SortOrder: 20, Status: 1}).Error)
+	require.NoError(t, DB.Create(&Vendor{Name: "Vendor Mid", SortOrder: 10, Status: 1}).Error)
+
+	InvalidatePricingCache()
+	vendors := GetVendors()
+	require.Len(t, vendors, 3)
+	assert.Equal(t, []string{"Vendor High", "Vendor Mid", "Vendor Low"}, []string{
+		vendors[0].Name, vendors[1].Name, vendors[2].Name,
+	})
+	assert.Equal(t, []int{20, 10, 1}, []int{
+		vendors[0].SortOrder, vendors[1].SortOrder, vendors[2].SortOrder,
+	})
+
+	listed, total, err := SearchVendors("", 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, listed, 3)
+	assert.Equal(t, "Vendor High", listed[0].Name)
+	assert.Equal(t, "Vendor Mid", listed[1].Name)
+	assert.Equal(t, "Vendor Low", listed[2].Name)
+}

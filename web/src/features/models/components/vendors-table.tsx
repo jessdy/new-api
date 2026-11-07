@@ -172,6 +172,14 @@ export function VendorsTable() {
         </Button>
       ),
     },
+    {
+      accessorKey: 'sort_order',
+      header: t('Sort Order'),
+      size: 110,
+      cell: ({ row }) => (
+        <span className='tabular-nums'>{row.original.sort_order ?? 0}</span>
+      ),
+    },
     { accessorKey: 'id', header: t('ID'), size: 80 },
     {
       accessorKey: 'created_time',

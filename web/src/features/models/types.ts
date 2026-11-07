@@ -70,6 +70,7 @@ export interface Vendor {
   name: string
   description?: string
   icon?: string
+  sort_order: number
   status: number
   created_time: number
   updated_time: number
@@ -295,6 +296,7 @@ export const vendorFormSchema = z.object({
     .string()
     .max(128, 'Vendor name and icon must not exceed 128 characters.')
     .default(''),
+  sort_order: z.coerce.number().int().default(0),
   version: z.string().optional(),
 })
 

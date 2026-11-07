@@ -210,14 +210,14 @@ export function PublicHeader(props: PublicHeaderProps) {
   const renderNavLink = (link: TopNavLink) => {
     const isActive = pathname === link.href
     const className = cn(
-      'relative inline-flex h-14 items-center px-3 text-sm font-medium transition-colors duration-200',
+      'relative inline-flex h-16 items-center px-4 text-base font-medium whitespace-nowrap transition-colors duration-200 md:h-20',
       isActive
         ? 'text-foreground'
         : 'text-muted-foreground hover:text-foreground',
       link.disabled && 'pointer-events-none opacity-50'
     )
     const underline = isActive ? (
-      <span className='from-brand-from to-brand-to absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-gradient-to-r' />
+      <span className='from-brand-from to-brand-to absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-gradient-to-r' />
     ) : null
 
     if (link.external) {
@@ -260,22 +260,22 @@ export function PublicHeader(props: PublicHeaderProps) {
         className={cn(
           'fixed inset-x-0 top-0 z-50 border-b transition-[background-color,border-color,box-shadow] duration-300',
           scrolled
-            ? 'border-border/60 bg-background/85 shadow-[0_1px_0_0_rgba(0,0,0,0.03)] backdrop-blur-xl dark:shadow-[0_1px_0_0_rgba(255,255,255,0.04)]'
-            : 'border-transparent bg-background/70 backdrop-blur-md'
+            ? 'border-border bg-background/80 shadow-sm backdrop-blur-xl'
+            : 'border-transparent bg-transparent'
         )}
       >
-        <nav className='relative mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 md:px-6'>
+        <nav className='relative mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:h-20 md:px-6'>
           {/* Logo */}
-          <div className='@container/system-brand flex min-w-0 shrink-0 items-center gap-1'>
+          <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:[container-type:normal] lg:mr-6 lg:flex-none'>
             <Link
               to={homeUrl}
-              className='group flex min-w-0 items-center gap-2.5'
+              className='group flex min-w-0 items-center gap-2 md:gap-3'
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-transform duration-300 group-hover:scale-105'>
+              <div className='flex size-8 shrink-0 items-center justify-center transition-transform duration-300 group-hover:scale-105 md:size-10'>
                 {logoContent}
               </div>
               <span
-                className='max-w-40 truncate text-sm font-semibold tracking-tight'
+                className='max-w-48 truncate text-lg font-bold md:text-xl'
                 title={displaySiteName}
               >
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
@@ -284,8 +284,8 @@ export function PublicHeader(props: PublicHeaderProps) {
             <SystemUpdateAction presentation='version' />
           </div>
 
-          {/* Centered desktop nav */}
-          <div className='absolute left-1/2 hidden -translate-x-1/2 items-center lg:flex'>
+          {/* Desktop nav */}
+          <div className='hidden items-center lg:flex'>
             {links.map((link) => renderNavLink(link))}
           </div>
 
@@ -358,7 +358,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             : 'pointer-events-none opacity-0'
         )}
       >
-        <div className='flex h-full flex-col justify-between px-8 pt-16 pb-10'>
+        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
           <nav className='flex flex-col gap-1'>
             {links.map((link, i) => {
               const isActive = pathname === link.href
@@ -419,7 +419,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <Link
                   to='/dashboard'
                   onClick={() => setMobileOpen(false)}
-                  className='inline-flex h-11 items-center justify-center rounded-md text-sm font-semibold text-primary-foreground [background-image:var(--brand-gradient)] transition-[filter] hover:brightness-105'
+                  className='text-primary-foreground inline-flex h-11 items-center justify-center rounded-md [background-image:var(--brand-gradient)] text-sm font-semibold transition-[filter] hover:brightness-105'
                 >
                   {t('Go to Dashboard')}
                 </Link>
@@ -428,7 +428,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Link
                     to='/sign-up'
                     onClick={() => setMobileOpen(false)}
-                    className='inline-flex h-11 items-center justify-center rounded-md text-sm font-semibold text-primary-foreground [background-image:var(--brand-gradient)] transition-[filter] hover:brightness-105'
+                    className='text-primary-foreground inline-flex h-11 items-center justify-center rounded-md [background-image:var(--brand-gradient)] text-sm font-semibold transition-[filter] hover:brightness-105'
                   >
                     {t('Get Started')}
                   </Link>

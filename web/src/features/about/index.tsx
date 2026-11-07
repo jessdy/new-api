@@ -57,7 +57,7 @@ export function About() {
       <PublicLayout showMainContainer={false}>
         <iframe
           src={rawContent}
-          className='h-[calc(100vh-3.5rem)] w-full border-0'
+          className='h-[calc(100vh-4rem)] w-full border-0 md:h-[calc(100vh-5rem)]'
           title={t('About')}
           sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
         />

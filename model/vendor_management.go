@@ -71,7 +71,7 @@ func validateVendorMetadata(tx *gorm.DB, vendor *Vendor) error {
 }
 
 func VendorRecordVersion(v *Vendor) string {
-	encoded, _ := common.Marshal([]any{v.Id, v.Name, v.Description, v.Icon, v.Status, v.CreatedTime, v.UpdatedTime})
+	encoded, _ := common.Marshal([]any{v.Id, v.Name, v.Description, v.Icon, v.SortOrder, v.Status, v.CreatedTime, v.UpdatedTime})
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
 
