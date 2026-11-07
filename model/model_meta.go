@@ -39,6 +39,7 @@ type Model struct {
 	Icon               string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
 	Tags               string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
 	VendorID           int            `json:"vendor_id,omitempty" gorm:"index"`
+	SortOrder          int            `json:"sort_order" gorm:"type:int;default:0"`
 	Endpoints          string         `json:"endpoints,omitempty" gorm:"type:text"`
 	SupportedEndpoints []string       `json:"supported_endpoints,omitempty" gorm:"-"`
 	Status             int            `json:"status" gorm:"default:1"`
@@ -265,7 +266,7 @@ func (mi *Model) Update() error {
 		}
 		mi.UpdatedTime = common.GetTimestamp()
 		return tx.Model(&Model{}).Where("id = ?", mi.Id).
-			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").Updates(mi).Error
+			Select("model_name", "description", "icon", "tags", "vendor_id", "sort_order", "endpoints", "status", "sync_official", "name_rule", "updated_time").Updates(mi).Error
 	})
 }
 
@@ -502,7 +503,7 @@ func SearchModels(keyword string, vendor string, status string, syncOfficial str
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := db.Order("models.id DESC").Offset(offset).Limit(limit).Find(&models).Error; err != nil {
+	if err := db.Order("models.sort_order DESC, models.id DESC").Offset(offset).Limit(limit).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	return models, total, nil

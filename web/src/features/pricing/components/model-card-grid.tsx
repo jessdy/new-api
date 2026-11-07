@@ -57,13 +57,18 @@ type VendorSection = {
 }
 
 function compareVendorOrder(a: PricingModel, b: PricingModel): number {
-  const orderDiff = (b.vendor_sort_order ?? 0) - (a.vendor_sort_order ?? 0)
-  if (orderDiff !== 0) return orderDiff
+  const vendorOrderDiff =
+    (b.vendor_sort_order ?? 0) - (a.vendor_sort_order ?? 0)
+  if (vendorOrderDiff !== 0) return vendorOrderDiff
   const nameA = a.vendor_name?.trim() || ''
   const nameB = b.vendor_name?.trim() || ''
   if (!nameA && nameB) return 1
   if (nameA && !nameB) return -1
-  return nameA.localeCompare(nameB)
+  const vendorNameDiff = nameA.localeCompare(nameB)
+  if (vendorNameDiff !== 0) return vendorNameDiff
+  const modelOrderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0)
+  if (modelOrderDiff !== 0) return modelOrderDiff
+  return (a.model_name || '').localeCompare(b.model_name || '')
 }
 
 function groupModelsByVendor(models: PricingModel[]): VendorSection[] {

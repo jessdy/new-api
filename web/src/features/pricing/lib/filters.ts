@@ -215,13 +215,18 @@ export function sortModels(
 
   switch (sortBy) {
     case SORT_OPTIONS.NAME:
-      sorted.sort((a, b) =>
-        (a.model_name || '').localeCompare(b.model_name || '')
-      )
+      sorted.sort(comparePricingModels)
       break
   }
 
   return sorted
+}
+
+/** Higher sort_order first; equal values fall back to model name. */
+export function comparePricingModels(a: PricingModel, b: PricingModel): number {
+  const orderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0)
+  if (orderDiff !== 0) return orderDiff
+  return (a.model_name || '').localeCompare(b.model_name || '')
 }
 
 /**

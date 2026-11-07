@@ -315,6 +315,15 @@ export function useModelsColumns(
         meta: { mobileHidden: true },
       },
       {
+        accessorKey: 'sort_order',
+        header: t('Sort Order'),
+        size: 110,
+        cell: ({ row }) => (
+          <span className='tabular-nums'>{row.original.sort_order ?? 0}</span>
+        ),
+        meta: { mobileHidden: true },
+      },
+      {
         accessorKey: 'name_rule',
         header: t('Match Type'),
         size: 100,

@@ -65,6 +65,20 @@ const models = [
   }),
 ]
 
+describe('name sorting', () => {
+  test('orders by sort_order descending then model name', () => {
+    const named = [
+      pricingModel('zeta', { sort_order: 1 }),
+      pricingModel('alpha', { sort_order: 10 }),
+      pricingModel('beta', { sort_order: 10 }),
+      pricingModel('gamma', { sort_order: 0 }),
+    ]
+    expect(
+      sortModels(named, SORT_OPTIONS.NAME).map((model) => model.model_name)
+    ).toEqual(['alpha', 'beta', 'zeta', 'gamma'])
+  })
+})
+
 describe('price sorting', () => {
   test.each([
     [

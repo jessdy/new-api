@@ -355,3 +355,31 @@ func TestPricingVendorsSortedBySortOrder(t *testing.T) {
 	assert.Equal(t, "Vendor Mid", listed[1].Name)
 	assert.Equal(t, "Vendor Low", listed[2].Name)
 }
+
+func TestPricingModelsIncludeSortOrder(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	require.NoError(t, DB.Create(&Model{ModelName: "model-low", SortOrder: 1, Status: 1}).Error)
+	require.NoError(t, DB.Create(&Model{ModelName: "model-high", SortOrder: 50, Status: 1}).Error)
+
+	insertPricingEndpointChannel(t, 501, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 501, "model-low")
+	insertPricingEndpointAbility(t, 501, "model-high")
+
+	InvalidatePricingCache()
+	byName := map[string]Pricing{}
+	for _, pricing := range GetPricing() {
+		byName[pricing.ModelName] = pricing
+	}
+	require.Contains(t, byName, "model-high")
+	require.Contains(t, byName, "model-low")
+	assert.Equal(t, 50, byName["model-high"].SortOrder)
+	assert.Equal(t, 1, byName["model-low"].SortOrder)
+
+	listed, total, err := SearchModels("", "", "", "", 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, listed, 2)
+	assert.Equal(t, "model-high", listed[0].ModelName)
+	assert.Equal(t, "model-low", listed[1].ModelName)
+}

@@ -409,6 +409,31 @@ export function ModelMutateDrawer(props: {
 
                       <FormField
                         control={form.control}
+                        name='sort_order'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Sort Order')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                {...field}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    Number.parseInt(e.target.value, 10) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('Higher values appear first')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
                         name='tags'
                         render={({ field }) => (
                           <FormItem>

@@ -45,6 +45,7 @@ export interface Model {
   icon?: string
   tags?: string
   vendor_id?: number
+  sort_order?: number
   endpoints?: string
   supported_endpoints?: string[]
   status: number
@@ -273,6 +274,7 @@ export const modelFormSchema = z.object({
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
+  sort_order: z.coerce.number().int().default(0),
   endpoints: z.string().default(''),
   name_rule: z.number().min(0).max(3).default(0),
   status: z.boolean().default(true),
