@@ -617,38 +617,37 @@ describe('model cards', () => {
     expect(onModelClick).toHaveBeenCalledWith('example-model')
   })
 
-  it('paginates the model cards and disables navigation at both boundaries', async () => {
+  it('lists every model without pagination controls', async () => {
     const request = vi.spyOn(api, 'get').mockResolvedValue({
       data: { success: true, data: { models: [] } },
     })
     const models = Array.from({ length: 21 }, (_, index) =>
       pricingModel({ id: index + 1, model_name: `model-${index + 1}` })
     )
-    const user = userEvent.setup()
     render(
       <QueryClientProvider client={queryClient}>
         <ModelCardGrid models={models} onModelClick={vi.fn()} />
       </QueryClientProvider>
     )
-    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(20)
-    expect(request).toHaveBeenCalledWith('/api/perf-metrics/summary', {
-      params: {
-        hours: 24,
-        recent_model: models.slice(0, 20).map((model) => model.model_name),
-      },
-      paramsSerializer: { indexes: null },
-    })
-    await user.click(screen.getByRole('button', { name: 'Next page' }))
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(1)
-    expect(screen.getByRole('heading', { name: 'model-21' })).toBeVisible()
-    expect(request).toHaveBeenLastCalledWith('/api/perf-metrics/summary', {
-      params: { hours: 24, recent_model: ['model-21'] },
-      paramsSerializer: { indexes: null },
-    })
-    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Previous page' }))
-    expect(screen.getByRole('heading', { name: 'model-1' })).toBeVisible()
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(21)
+    expect(
+      screen.queryByRole('button', { name: 'Previous page' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Next page' })
+    ).not.toBeInTheDocument()
+    const recentModels = [...models]
+      .sort((a, b) => (a.model_name || '').localeCompare(b.model_name || ''))
+      .map((model) => model.model_name)
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith('/api/perf-metrics/summary', {
+        params: {
+          hours: 24,
+          recent_model: recentModels,
+        },
+        paramsSerializer: { indexes: null },
+      })
+    )
   })
 
   it('switches the card grid to three columns at the xl breakpoint instead of 2xl', () => {
